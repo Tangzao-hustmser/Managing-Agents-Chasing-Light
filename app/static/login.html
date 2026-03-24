@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>创新实践基地智能管理面板 - 登录</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .login-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      max-width: 400px;
+      padding: 40px;
+    }
+    
+    .login-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .login-header h1 {
+      font-size: 24px;
+      color: #1f2937;
+      margin-bottom: 8px;
+    }
+    
+    .login-header p {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #374151;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+    }
+    
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+    
+    .btn-secondary:hover {
+      background: #d1d5db;
+    }
+    
+    .error {
+      color: #dc2626;
+      font-size: 13px;
+      margin-top: 8px;
+      text-align: center;
+    }
+    
+    .success {
+      color: #059669;
+      font-size: 13px;
+      margin-top: 8px;
+      text-align: center;
+    }
+    
+    .demo-accounts {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    
+    .demo-accounts h4 {
+      margin-bottom: 12px;
+      color: #374151;
+      font-size: 13px;
+    }
+    
+    .demo-item {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: #f3f4f6;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .demo-item:hover {
+      background: #e5e7eb;
+    }
+    
+    .demo-item-name {
+      font-weight: 500;
+      color: #1f2937;
+    }
+    
+    .demo-item-pass {
+      color: #6b7280;
+      font-size: 11px;
+    }
+    
+    .loading {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <h1>创新实践基地</h1>
+      <p>共享资源智能管理系统</p>
+    </div>
+    
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label for="username">用户名</label>
+        <input 
+          type="text" 
+          id="username" 
+          placeholder="输入用户名"
+          required
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="password">密码</label>
+        <input 
+          type="password" 
+          id="password" 
+          placeholder="输入密码"
+          required
+        />
+      </div>
+      
+      <div id="message"></div>
+      
+      <div class="button-group">
+        <button type="submit" class="btn-primary" id="login-btn">登 录</button>
+        <button type="button" class="btn-secondary" onclick="toggleRegister()">注 册</button>
+      </div>
+    </form>
+    
+    <!-- 演示账户 -->
+    <div class="demo-accounts">
+      <h4>🎯 演示账户（点击可快速填充）：</h4>
+      <div class="demo-item" onclick="fillDemo('admin001', 'admin@2024')">
+        <div class="demo-item-name">👨‍💼 管理员</div>
+        <div class="demo-item-pass">admin001 / admin@2024</div>
+      </div>
+      <div class="demo-item" onclick="fillDemo('student001', 'student@2024')">
+        <div class="demo-item-name">👨‍🎓 学生 1</div>
+        <div class="demo-item-pass">student001 / student@2024</div>
+      </div>
+      <div class="demo-item" onclick="fillDemo('student002', 'student@2024')">
+        <div class="demo-item-name">👨‍🎓 学生 2</div>
+        <div class="demo-item-pass">student002 / student@2024</div>
+      </div>
+      <div class="demo-item" onclick="fillDemo('teacher001', 'teacher@2024')">
+        <div class="demo-item-name">👨‍🏫 教师</div>
+        <div class="demo-item-pass">teacher001 / teacher@2024</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 注册模态框 -->
+  <div id="register-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+    <div class="login-container" style="margin: 0;">
+      <div class="login-header">
+        <h1>新用户注册</h1>
+        <p>创建您的账号</p>
+      </div>
+      
+      <form id="register-form" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="reg-username">用户名</label>
+          <input type="text" id="reg-username" placeholder="用户名（4-20字符）" required />
+        </div>
+        
+        <div class="form-group">
+          <label for="reg-password">密码</label>
+          <input type="password" id="reg-password" placeholder="密码（至少6位）" required />
+        </div>
+        
+        <div class="form-group">
+          <label for="reg-real-name">真实姓名</label>
+          <input type="text" id="reg-real-name" placeholder="您的真实姓名" required />
+        </div>
+        
+        <div class="form-group">
+          <label for="reg-student-id">学号/工号</label>
+          <input type="text" id="reg-student-id" placeholder="学号或工号" required />
+        </div>
+        
+        <div class="form-group">
+          <label for="reg-email">邮箱（可选）</label>
+          <input type="email" id="reg-email" placeholder="邮箱地址" />
+        </div>
+        
+        <div id="register-message"></div>
+        
+        <div class="button-group">
+          <button type="submit" class="btn-primary">注 册</button>
+          <button type="button" class="btn-secondary" onclick="toggleRegister()">取 消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <script>
+    function toggleRegister() {
+      const modal = document.getElementById('register-modal');
+      modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
+    }
+    
+    function fillDemo(username, password) {
+      document.getElementById('username').value = username;
+      document.getElementById('password').value = password;
+      document.getElementById('username').focus();
+    }
+    
+    async function handleLogin(e) {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const messageEl = document.getElementById('message');
+      const loginBtn = document.getElementById('login-btn');
+      
+      if (!username || !password) {
+        messageEl.className = 'error';
+        messageEl.innerText = '请输入用户名和密码';
+        return;
+      }
+      
+      loginBtn.disabled = true;
+      loginBtn.classList.add('loading');
+      loginBtn.innerText = '登录中...';
+      
+      try {
+        const response = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        if (!response.ok) {
+          throw new Error('用户名或密码错误');
+        }
+        
+        const data = await response.json();
+        
+        // 保存 token 和用户信息
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        messageEl.className = 'success';
+        messageEl.innerText = '登录成功，跳转中...';
+        
+        // 跳转到仪表板
+        setTimeout(() => {
+          window.location.href = '/dashboard-main';
+        }, 1000);
+      } catch (error) {
+        messageEl.className = 'error';
+        messageEl.innerText = error.message || '登录失败，请重试';
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.classList.remove('loading');
+        loginBtn.innerText = '登 录';
+      }
+    }
+    
+    async function handleRegister(e) {
+      e.preventDefault();
+      
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const realName = document.getElementById('reg-real-name').value.trim();
+      const studentId = document.getElementById('reg-student-id').value.trim();
+      const email = document.getElementById('reg-email').value.trim() || null;
+      
+      const messageEl = document.getElementById('register-message');
+      
+      try {
+        const response = await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            password,
+            real_name: realName,
+            student_id: studentId,
+            email: email
+          })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || '注册失败');
+        }
+        
+        messageEl.className = 'success';
+        messageEl.innerText = '注册成功！请使用新账号登录。';
+        
+        setTimeout(() => {
+          document.getElementById('register-form').reset();
+          toggleRegister();
+          messageEl.innerText = '';
+        }, 1500);
+      } catch (error) {
+        messageEl.className = 'error';
+        messageEl.innerText = error.message || '注册失败，请重试';
+      }
+    }
+    
+    // 检查是否已登录
+    window.addEventListener('load', () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        // 已登录，跳转到仪表板
+        window.location.href = '/dashboard-main';
+      }
+    });
+  </script>
+</body>
+</html>

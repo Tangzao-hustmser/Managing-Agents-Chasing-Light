@@ -37,10 +37,22 @@ def health_check():
     return {"name": settings.app_name, "status": "ok", "env": settings.app_env}
 
 
+@app.get("/login", tags=["系统"])
+def login_page():
+    """返回登录页面。"""
+    return FileResponse("app/static/login.html")
+
+
 @app.get("/dashboard", tags=["系统"])
 def dashboard_page():
-    """返回前端管理面板页面。"""
+    """返回原始演示面板（无认证）。"""
     return FileResponse("app/static/dashboard.html")
+
+
+@app.get("/dashboard-main", tags=["系统"])
+def dashboard_main_page():
+    """返回认证版仪表板。"""
+    return FileResponse("app/static/dashboard-main.html")
 
 
 @app.post("/agent/ask", response_model=AgentAskOut, tags=["智能体"])

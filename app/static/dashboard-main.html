@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>创新实践基地智能管理面板</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    
+    .navbar {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .navbar h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .user-badge {
+      background: #f3f4f6;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      color: #374151;
+    }
+    
+    .role-badge {
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .role-badge.admin {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    
+    .role-badge.student {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    
+    .role-badge.teacher {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    
+    .btn-logout {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    
+    .btn-logout:hover {
+      background: #dc2626;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 16px 24px;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .header h2 {
+      font-size: 20px;
+    }
+    
+    .status-badge {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+    
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .metric-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    
+    .metric-value {
+      font-size: 28px;
+      font-weight: 600;
+      color: #667eea;
+    }
+    
+    .section-title {
+      font-size: 16px;
+      margin: 0 0 12px;
+      color: #1f2937;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 8px;
+    }
+    
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    
+    th {
+      background: #f9fafb;
+      padding: 8px;
+      text-align: left;
+      font-weight: 600;
+      color: #374151;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    
+    td {
+      padding: 8px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    tr:hover {
+      background: #f9fafb;
+    }
+    
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    
+    .btn:hover {
+      background: #5a67d8;
+    }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    
+    textarea { min-height: 80px; }
+    
+    .row {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .row > * {
+      flex: 1;
+    }
+    
+    .chat-box {
+      height: 200px;
+      overflow-y: auto;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    
+    .message {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .message.user {
+      background: #dbeafe;
+      text-align: right;
+    }
+    
+    .message.ai {
+      background: #f3f4f6;
+    }
+    
+    .alert-item {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    
+    .hidden { display: none; }
+    
+    @media (max-width: 980px) {
+      .grid-4 { grid-template-columns: 1fr 1fr; }
+      .layout { grid-template-columns: 1fr; }
+      .navbar { flex-direction: column; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 导航栏 -->
+  <div class="navbar">
+    <h1>创新实践基地共享资源管理面板</h1>
+    <div class="user-info">
+      <div class="user-badge">
+        👤 <span id="username-display">用户</span>
+      </div>
+      <div class="role-badge" id="role-display">学生</div>
+      <button class="btn-logout" onclick="handleLogout()">退出登录</button>
+    </div>
+  </div>
+  
+  <!-- 主容器 -->
+  <div class="container">
+    <div class="header">
+      <h2>仪表板</h2>
+      <span class="status-badge">✅ 系统正常</span>
+    </div>
+    
+    <!-- 指标卡片 -->
+    <div class="grid-4">
+      <div class="card">
+        <div class="metric-label">资源总数</div>
+        <div class="metric-value" id="m-total-resources">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">低库存资源</div>
+        <div class="metric-value" id="m-low-inventory">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">预警总数</div>
+        <div class="metric-value" id="m-total-alerts">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">我的交易数</div>
+        <div class="metric-value" id="m-user-tx">0</div>
+      </div>
+    </div>
+    
+    <!-- 主要内容区 -->
+    <div class="layout">
+      <!-- 左侧：资源列表 -->
+      <div>
+        <div class="card">
+          <h3 class="section-title">共享资源列表</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>可用/总</th>
+                <th>位置</th>
+              </tr>
+            </thead>
+            <tbody id="resources-tbody"></tbody>
+          </table>
+        </div>
+        
+        <!-- 交易历史 -->
+        <div class="card" style="margin-top: 12px;">
+          <h3 class="section-title">我的交易记录</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>资源</th>
+                <th>数量</th>
+              </tr>
+            </thead>
+            <tbody id="transactions-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- 右侧：操作和预警 -->
+      <div>
+        <!-- 借用/领用表单 -->
+        <div class="card">
+          <h3 class="section-title">资源申请</h3>
+          
+          <div class="row">
+            <select id="tx-action">
+              <option value="borrow">借用设备</option>
+              <option value="consume">领用物料</option>
+              <option value="return">归还设备</option>
+            </select>
+          </div>
+          
+          <div class="row">
+            <select id="tx-resource-id"></select>
+          </div>
+          
+          <div id="borrow-fields">
+            <input type="datetime-local" id="borrow-time" placeholder="借用时间" />
+            <input type="datetime-local" id="return-time" placeholder="归还时间" />
+          </div>
+          
+          <div id="consume-fields" class="hidden">
+            <input type="number" id="consume-quantity" min="1" value="1" placeholder="数量" />
+          </div>
+          
+          <textarea id="tx-note" placeholder="备注（可选）"></textarea>
+          <button class="btn" onclick="submitTransaction()">✓ 提交申请</button>
+          <div id="tx-result" style="font-size: 12px; margin-top: 8px; color: #059669;"></div>
+        </div>
+        
+        <!-- 预警信息 -->
+        <div class="card" style="margin-top: 12px;">
+          <h3 class="section-title">系统预警</h3>
+          <div id="alerts-box" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+        
+        <!-- 审批中心（仅管理员） -->
+        <div class="card" style="margin-top: 12px;" id="approval-panel" class="hidden">
+          <h3 class="section-title">⚠️ 待审批申请</h3>
+          <div id="approvals-box" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- AI 智能体 -->
+    <div class="card" style="margin-top: 20px;">
+      <h3 class="section-title">💬 智能资源助手</h3>
+      <div class="chat-box" id="chat-box"></div>
+      <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+        会话 ID：<span id="session-id">新建中...</span>
+      </div>
+      <div class="row">
+        <textarea id="chat-input" placeholder="问我任何关于资源的问题..."></textarea>
+      </div>
+      <button class="btn" onclick="sendChat()">🚀 发送</button>
+    </div>
+  </div>
+  
+  <script>
+    // ============ 初始化 ============
+    let currentUser = null;
+    let currentSessionId = "";
+    let resourceCache = [];
+    
+    async function init() {
+      // 检查登录状态
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+      
+      if (!token || !userStr) {
+        window.location.href = '/login';
+        return;
+      }
+      
+      try {
+        currentUser = JSON.parse(userStr);
+        setupUI();
+        await refreshAll();
+      } catch (err) {
+        console.error('初始化失败', err);
+        handleLogout();
+      }
+    }
+    
+    function setupUI() {
+      document.getElementById('username-display').innerText = currentUser.real_name || currentUser.username;
+      const roleEl = document.getElementById('role-display');
+      roleEl.innerText = getRoleLabel(currentUser.role);
+      roleEl.className = 'role-badge ' + currentUser.role;
+      
+      // 仅管理员可见审批面板
+      if (currentUser.role === 'admin') {
+        document.getElementById('approval-panel').classList.remove('hidden');
+      }
+    }
+    
+    function getRoleLabel(role) {
+      const labels = { admin: '👨‍💼 管理员', student: '👨‍🎓 学生', teacher: '👨‍🏫 教师' };
+      return labels[role] || role;
+    }
+    
+    // ============ API 调用 ============
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': localStorage.getItem('token')
+      };
+    }
+    
+    async function fetchJSON(url, options = {}) {
+      const resp = await fetch(url, { ...options, headers: getHeaders() });
+      if (resp.status === 401) {
+        handleLogout();
+        return null;
+      }
+      if (!resp.ok) throw new Error(`请求失败: ${resp.status}`);
+      return await resp.json();
+    }
+    
+    // ============ 数据加载 ============
+    async function loadOverview() {
+      try {
+        const data = await fetchJSON('/analytics/overview');
+        if (data) {
+          document.getElementById('m-total-resources').innerText = data.total_resources;
+          document.getElementById('m-low-inventory').innerText = data.low_inventory_resources;
+          document.getElementById('m-total-alerts').innerText = data.total_alerts;
+          
+          // 加载用户交易数
+          const txData = await fetchJSON('/transactions/');
+          document.getElementById('m-user-tx').innerText = txData?.length || 0;
+        }
+      } catch (err) {
+        console.error('加载概览失败', err);
+      }
+    }
+    
+    async function loadResources() {
+      try {
+        const list = await fetchJSON('/resources');
+        if (!list) return;
+        
+        resourceCache = list;
+        
+        // 更新资源列表表格
+        const tbody = document.getElementById('resources-tbody');
+        tbody.innerHTML = '';
+        for (const item of list.slice(0, 10)) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${item.name}</td>
+            <td>${item.category === 'device' ? '🔧 设备' : '📦 物料'}</td>
+            <td>${item.available_count}/${item.total_count}</td>
+            <td>${item.location}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+        
+        // 更新资源下拉菜单
+        const select = document.getElementById('tx-resource-id');
+        select.innerHTML = '';
+        for (const item of list) {
+          const opt = document.createElement('option');
+          opt.value = item.id;
+          opt.innerText = `${item.name} (可用: ${item.available_count})`;
+          select.appendChild(opt);
+        }
+      } catch (err) {
+        console.error('加载资源失败', err);
+      }
+    }
+    
+    async function loadTransactions() {
+      try {
+        const data = await fetchJSON('/transactions/');
+        if (!data) return;
+        
+        const tbody = document.getElementById('transactions-tbody');
+        tbody.innerHTML = '';
+        
+        for (const tx of data.slice(0, 8)) {
+          const tr = document.createElement('tr');
+          const actionLabel = { borrow: '借用', return: '归还', consume: '领用', replenish: '补货', lost: '丢失' }[tx.action];
+          const time = new Date(tx.created_at).toLocaleString('zh-CN');
+          
+          tr.innerHTML = `
+            <td>${time}</td>
+            <td>${actionLabel}</td>
+            <td>${tx.resource?.name || '未知'}</td>
+            <td>${tx.quantity}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (err) {
+        console.error('加载交易记录失败', err);
+      }
+    }
+    
+    async function loadAlerts() {
+      try {
+        const data = await fetchJSON('/alerts/');
+        if (!data) return;
+        
+        const box = document.getElementById('alerts-box');
+        box.innerHTML = '';
+        
+        for (const alert of data.slice(0, 5)) {
+          const div = document.createElement('div');
+          div.className = 'alert-item';
+          div.innerText = `⚠️ ${alert.message}\n时间: ${new Date(alert.created_at).toLocaleString()}`;
+          box.appendChild(div);
+        }
+      } catch (err) {
+        console.error('加载预警失败', err);
+      }
+    }
+    
+    async function loadApprovals() {
+      if (currentUser.role !== 'admin') return;
+      
+      try {
+        const data = await fetchJSON('/approvals/');
+        if (!data) return;
+        
+        const box = document.getElementById('approvals-box');
+        box.innerHTML = '';
+        
+        for (const task of data.slice(0, 5)) {
+          const div = document.createElement('div');
+          div.className = 'alert-item';
+          div.style.borderLeftColor = '#f59e0b';
+          div.innerText = `申请人: ${task.requester?.real_name}\n状态: ${task.status}\n操作: ${task.transaction?.action}`;
+          box.appendChild(div);
+        }
+      } catch (err) {
+        console.error('加载审批列表失败', err);
+      }
+    }
+    
+    async function refreshAll() {
+      await Promise.all([loadOverview(), loadResources(), loadTransactions(), loadAlerts(), loadApprovals()]);
+    }
+    
+    // ============ 交互 ============
+    async function submitTransaction() {
+      const resourceId = document.getElementById('tx-resource-id').value;
+      const action = document.getElementById('tx-action').value;
+      const note = document.getElementById('tx-note').value;
+      const resultEl = document.getElementById('tx-result');
+      
+      try {
+        const body = {
+          resource_id: parseInt(resourceId),
+          action,
+          note,
+          quantity: 1
+        };
+        
+        if (action === 'borrow') {
+          body.borrow_time = document.getElementById('borrow-time').value;
+          body.return_time = document.getElementById('return-time').value;
+          if (!body.borrow_time || !body.return_time) throw new Error('请填写借用时间');
+        }
+        
+        if (action === 'consume') {
+          body.quantity = parseInt(document.getElementById('consume-quantity').value) || 1;
+        }
+        
+        const resp = await fetch('/transactions/', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(body)
+        });
+        
+        if (!resp.ok) throw new Error('提交失败');
+        
+        resultEl.style.color = '#059669';
+        resultEl.innerText = '✓ 申请已提交';
+        await refreshAll();
+        
+        setTimeout(() => {
+          resultEl.innerText = '';
+          document.getElementById('tx-note').value = '';
+        }, 3000);
+      } catch (err) {
+        resultEl.style.color = '#dc2626';
+        resultEl.innerText = '✗ ' + err.message;
+      }
+    }
+    
+    async function sendChat() {
+      const input = document.getElementById('chat-input').value.trim();
+      if (!input) return;
+      
+      const chatBox = document.getElementById('chat-box');
+      const userMsg = document.createElement('div');
+      userMsg.className = 'message user';
+      userMsg.innerText = input;
+      chatBox.appendChild(userMsg);
+      
+      document.getElementById('chat-input').value = '';
+      chatBox.scrollTop = chatBox.scrollHeight;
+      
+      try {
+        const resp = await fetch('/agent/chat', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ user_message: input, session_id: currentSessionId })
+        });
+        
+        const data = await resp.json();
+        currentSessionId = data.session_id;
+        document.getElementById('session-id').innerText = currentSessionId.slice(0, 8) + '...';
+        
+        const aiMsg = document.createElement('div');
+        aiMsg.className = 'message ai';
+        aiMsg.innerText = data.response || '无法获取回复，请稍后重试';
+        chatBox.appendChild(aiMsg);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      } catch (err) {
+        const errMsg = document.createElement('div');
+        errMsg.className = 'message ai';
+        errMsg.innerText = '⚠️ 错误：' + err.message;
+        chatBox.appendChild(errMsg);
+      }
+    }
+    
+    function handleLogout() {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    
+    // ============ 启动 ============
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
