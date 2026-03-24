@@ -81,7 +81,7 @@ class Transaction(Base):
 
     resource = relationship("Resource", back_populates="transactions")
     user = relationship("User", back_populates="transactions")
-    approval_task = relationship("ApprovalTask", back_populates="transaction")
+    approval_task = relationship("ApprovalTask", foreign_keys=[approval_id], back_populates="transaction")
 
 
 class Alert(Base):
@@ -110,7 +110,7 @@ class ApprovalTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     approved_at = Column(DateTime, nullable=True)
 
-    transaction = relationship("Transaction", back_populates="approval_task")
+    transaction = relationship("Transaction", foreign_keys=[transaction_id], back_populates="approval_task")
     requester = relationship("User", foreign_keys=[requester_id], back_populates="approval_tasks_requested")
     approver = relationship("User", foreign_keys=[approver_id], back_populates="approval_tasks_approved")
 
