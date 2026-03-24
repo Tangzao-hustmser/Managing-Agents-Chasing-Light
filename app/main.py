@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.routers import agent, alerts, analytics, files, resources, transactions
+from app.routers import agent, alerts, analytics, approvals, auth, files, resources, transactions
 from app.schemas import AgentAskIn, AgentAskOut, AgentChatIn, AgentChatOut
 from app.services.agent_service import ask_agent
 from app.services.llm_service import chat_with_agent, check_llm_connectivity
@@ -21,9 +21,11 @@ app = FastAPI(title=settings.app_name, version="1.0.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # 注册业务路由模块。
+app.include_router(auth.router)
 app.include_router(resources.router)
 app.include_router(transactions.router)
 app.include_router(alerts.router)
+app.include_router(approvals.router)
 app.include_router(files.router)
 app.include_router(analytics.router)
 app.include_router(agent.router)
