@@ -1,6 +1,7 @@
 """时段冲突检测服务：检查设备预约时间是否冲突。"""
 
 from datetime import datetime
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -12,8 +13,8 @@ def check_time_slot_conflict(
     resource_id: int,
     borrow_time: datetime,
     return_time: datetime,
-    exclude_transaction_id: int | None = None
-) -> list[Transaction]:
+    exclude_transaction_id: Optional[int] = None
+) -> List[Transaction]:
     """
     检查指定资源在给定时段内是否有冲突的借用。
     

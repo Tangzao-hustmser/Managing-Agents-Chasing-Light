@@ -1,5 +1,7 @@
 """认证路由：注册、登录、获取当前用户信息。"""
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 
 def get_current_user(
     db: Session = Depends(get_db),
-    authorization: str | None = Header(None)
+    authorization: Optional[str] = Header(None)
 ) -> User:
     """从 Authorization header 获取当前用户。
     

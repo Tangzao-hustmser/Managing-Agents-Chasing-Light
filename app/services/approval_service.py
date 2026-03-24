@@ -1,13 +1,14 @@
 """审批流程服务：高风险操作的审批管理。"""
 
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.models import ApprovalTask, Resource, Transaction, User
 
 
-def should_require_approval(action: str, quantity: int, resource: Resource) -> tuple[bool, str]:
+def should_require_approval(action: str, quantity: int, resource: Resource) -> Tuple[bool, str]:
     """
     判断是否需要审批。
     
@@ -44,7 +45,7 @@ def create_approval_task(
     return task
 
 
-def get_pending_approvals(db: Session, limit: int = 50) -> list[ApprovalTask]:
+def get_pending_approvals(db: Session, limit: int = 50) -> List[ApprovalTask]:
     """获取待审批任务。"""
     return db.query(ApprovalTask).filter(
         ApprovalTask.status == "pending"

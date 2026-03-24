@@ -74,14 +74,15 @@ class Transaction(Base):
     condition_return = Column(String(30), default="完好")  # 归还状态：完好/损坏/部分丢失
     
     # 审批流程
-    approval_id = Column(ForeignKey("approval_tasks.id"), nullable=True)
+    # 注：审批任务通过 ApprovalTask.transaction_id 关联，不需要反向外键
     is_approved = Column(Boolean, default=False)  # 是否已批准
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     resource = relationship("Resource", back_populates="transactions")
     user = relationship("User", back_populates="transactions")
-    approval_task = relationship("ApprovalTask", foreign_keys=[approval_id], back_populates="transaction")
+    # 反向关系：通过 ApprovalTask.transaction_id 查询
+    approval_task = relationship("ApprovalTask", back_populates="transaction", uselist=False, foreign_keys="ApprovalTask.transaction_id")
 
 
 class Alert(Base):
@@ -110,7 +111,7 @@ class ApprovalTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     approved_at = Column(DateTime, nullable=True)
 
-    transaction = relationship("Transaction", foreign_keys=[transaction_id], back_populates="approval_task")
+    transaction = relationship("Transaction", back_populates="approval_task", foreign_keys=[transaction_id])
     requester = relationship("User", foreign_keys=[requester_id], back_populates="approval_tasks_requested")
     approver = relationship("User", foreign_keys=[approver_id], back_populates="approval_tasks_approved")
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import httpx
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ def _build_data_context(db: Session) -> str:
     latest_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(8).all()
     latest_tx = db.query(Transaction).order_by(Transaction.created_at.desc()).limit(8).all()
 
-    lines: list[str] = []
+    lines: List[str] = []
     lines.append("【低库存资源】")
     if low_items:
         for r in low_items:
@@ -50,7 +50,7 @@ def _build_data_context(db: Session) -> str:
     return "\n".join(lines)
 
 
-def _load_history(db: Session, session_id: str, limit: int = 12) -> list[dict[str, str]]:
+def _load_history(db: Session, session_id: str, limit: int = 12) -> List[Dict[str, str]]:
     """读取历史消息，限制条数以控制 token 成本。"""
     rows = (
         db.query(ChatMessage)
@@ -68,7 +68,7 @@ def _save_message(db: Session, session_id: str, role: str, content: str) -> None
     db.commit()
 
 
-def list_sessions(db: Session, limit: int = 20) -> list[str]:
+def list_sessions(db: Session, limit: int = 20) -> List[str]:
     """返回最近会话 ID 列表。"""
     rows = (
         db.query(ChatMessage.session_id)
@@ -76,7 +76,7 @@ def list_sessions(db: Session, limit: int = 20) -> list[str]:
         .limit(limit * 4)
         .all()
     )
-    session_ids: list[str] = []
+    session_ids: List[str] = []
     for row in rows:
         sid = row[0]
         if sid not in session_ids:
@@ -86,7 +86,7 @@ def list_sessions(db: Session, limit: int = 20) -> list[str]:
     return session_ids
 
 
-def get_session_messages(db: Session, session_id: str, limit: int = 50) -> list[ChatMessage]:
+def get_session_messages(db: Session, session_id: str, limit: int = 50) -> List[ChatMessage]:
     """读取指定会话消息，便于前端展示聊天记录。"""
     return (
         db.query(ChatMessage)
@@ -104,13 +104,13 @@ def clear_session_messages(db: Session, session_id: str) -> int:
     return deleted
 
 
-def _call_openai_compatible(messages: list[dict[str, str]]) -> str:
+def _call_openai_compatible(messages: List[Dict[str, str]]) -> str:
     """调用 OpenAI 兼容接口 `/chat/completions`。"""
     base_url = settings.llm_base_url.rstrip("/")
     if not base_url or not settings.llm_api_key or not settings.llm_model:
         raise ValueError("大模型配置不完整，请检查 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL")
 
-    payload: dict[str, Any] = {
+    payload: Dict[str, Any] = {
         "model": settings.llm_model,
         "messages": messages,
         "temperature": 0.2,
@@ -168,7 +168,7 @@ def check_llm_connectivity() -> dict:
         return {"ok": False, "reason": "unknown_error", "message": "模型调用异常", "detail": str(exc)}
 
 
-def chat_with_agent(db: Session, user_message: str, session_id: str | None = None) -> dict:
+def chat_with_agent(db: Session, user_message: str, session_id: Optional[str] = None) -> dict:
     """对话式智能体入口：优先调用大模型，失败时回退规则引擎。"""
     sid = session_id or uuid.uuid4().hex
     _save_message(db, sid, "user", user_message)

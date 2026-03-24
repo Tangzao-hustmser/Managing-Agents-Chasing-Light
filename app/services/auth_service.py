@@ -2,6 +2,7 @@
 
 import secrets
 from datetime import datetime, timedelta
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -55,7 +56,7 @@ def get_user_by_username(db: Session, username: str) -> User:
     return db.query(User).filter(User.username == username).first()
 
 
-def list_users(db: Session, limit: int = 100) -> list[User]:
+def list_users(db: Session, limit: int = 100) -> List[User]:
     """列出所有用户（仅管理员可调用）。"""
     return db.query(User).order_by(User.id.desc()).limit(limit).all()
 
