@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>创新实践基地智能管理面板</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 16px 24px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-badge {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+    .status-model {
+      background: #dcfce7;
+      color: #166534;
+      border-color: #86efac;
+    }
+    .status-fallback {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fde68a;
+    }
+    .btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+      padding: 14px;
+    }
+    .metric-label {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .metric-value {
+      margin-top: 8px;
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 4px;
+    }
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+    .alert-item {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .chat-box {
+      height: 220px;
+      overflow-y: auto;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    textarea { min-height: 70px; }
+    .small {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .muted-btn {
+      background: #e5e7eb;
+      color: #111827;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      margin-bottom: 8px;
+    }
+    .hidden {
+      display: none;
+    }
+    @media (max-width: 980px) {
+      .grid-4 { grid-template-columns: 1fr 1fr; }
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-left">
+        <h1>创新实践基地共享资源管理面板</h1>
+        <span id="llm-status" class="status-badge">模型状态：待检测</span>
+      </div>
+      <button class="btn" onclick="refreshAll()">刷新数据</button>
+    </div>
+
+    <div class="grid-4">
+      <div class="card">
+        <div class="metric-label">资源总数</div>
+        <div class="metric-value" id="m-total-resources">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">低库存资源</div>
+        <div class="metric-value" id="m-low-inventory">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">预警总数</div>
+        <div class="metric-value" id="m-total-alerts">0</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">流水总数</div>
+        <div class="metric-value" id="m-total-tx">0</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div>
+        <div class="card">
+          <h3 class="section-title">资源列表</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>类型</th>
+                <th>可用/总量</th>
+                <th>位置</th>
+              </tr>
+            </thead>
+            <tbody id="resources-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3 class="section-title">借还/领用操作</h3>
+          <div class="row">
+            <select id="tx-resource-id"></select>
+            <select id="tx-action">
+              <option value="borrow">borrow 借用</option>
+              <option value="return">return 归还</option>
+              <option value="consume">consume 领用耗材</option>
+              <option value="replenish">replenish 补货</option>
+              <option value="lost">lost 丢失登记</option>
+            </select>
+          </div>
+          <div class="row">
+            <input id="tx-user" placeholder="操作人姓名，如 张三" />
+            <input id="tx-quantity" type="number" min="1" value="1" />
+          </div>
+          <textarea id="tx-note" placeholder="备注（可选）"></textarea>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn" onclick="submitTransaction()">提交操作</button>
+          </div>
+          <div id="tx-result" class="small"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3 class="section-title">对话式智能体</h3>
+          <div class="chat-box" id="chat-box"></div>
+          <div class="small">当前会话 ID：<span id="session-id">（未创建）</span></div>
+          <div class="row" style="margin-top:8px;">
+            <textarea id="chat-input" placeholder="例如：请基于当前预警给我本周处置优先级建议"></textarea>
+          </div>
+          <button class="btn" onclick="sendChat()">发送问题</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3 class="section-title">最新预警</h3>
+          <div id="alerts-box"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3 class="section-title">七牛高级功能</h3>
+          <button id="qiniu-toggle-btn" class="muted-btn" onclick="toggleQiniuAdvanced()">
+            展开七牛高级功能（私有链接生成）
+          </button>
+          <div id="qiniu-advanced-panel" class="hidden">
+            <input id="qiniu-key" placeholder="请输入对象 key，例如 records/photo-001.jpg" />
+            <div class="row" style="margin-top:8px;">
+              <input id="qiniu-expire" type="number" value="3600" />
+              <button class="btn" onclick="genPrivateUrl()">生成链接</button>
+            </div>
+            <textarea id="qiniu-url" placeholder="生成结果显示在这里"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 保存对话会话 ID，用于多轮上下文。
+    let currentSessionId = "";
+    let resourceCache = [];
+
+    async function fetchJSON(url, options = {}) {
+      const resp = await fetch(url, options);
+      if (!resp.ok) {
+        throw new Error(`请求失败: ${resp.status}`);
+      }
+      return await resp.json();
+    }
+
+    async function loadOverview() {
+      const data = await fetchJSON("/analytics/overview");
+      document.getElementById("m-total-resources").innerText = data.total_resources;
+      document.getElementById("m-low-inventory").innerText = data.low_inventory_resources;
+      document.getElementById("m-total-alerts").innerText = data.total_alerts;
+      document.getElementById("m-total-tx").innerText = data.total_transactions;
+    }
+
+    async function loadResources() {
+      const list = await fetchJSON("/resources");
+      resourceCache = list;
+      const tbody = document.getElementById("resources-tbody");
+      tbody.innerHTML = "";
+      for (const item of list.slice(0, 20)) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${item.id}</td>
+          <td>${item.name}</td>
+          <td>${item.subtype}</td>
+          <td>${item.available_count}/${item.total_count}</td>
+          <td>${item.location}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      renderTransactionResourceOptions();
+    }
+
+    function renderTransactionResourceOptions() {
+      const select = document.getElementById("tx-resource-id");
+      if (!select) return;
+      const oldValue = select.value;
+      select.innerHTML = "";
+      for (const item of resourceCache) {
+        const option = document.createElement("option");
+        option.value = String(item.id);
+        option.text = `${item.id} - ${item.name} (${item.available_count}/${item.total_count})`;
+        select.appendChild(option);
+      }
+      if (oldValue) select.value = oldValue;
+    }
+
+    async function loadAlerts() {
+      const list = await fetchJSON("/alerts");
+      const box = document.getElementById("alerts-box");
+      box.innerHTML = "";
+      const top = list.slice(0, 8);
+      if (top.length === 0) {
+        box.innerHTML = "<div class='small'>暂无预警</div>";
+        return;
+      }
+      for (const alert of top) {
+        const div = document.createElement("div");
+        div.className = "alert-item";
+        div.innerText = `[${alert.level}] ${alert.type} - ${alert.message}`;
+        box.appendChild(div);
+      }
+    }
+
+    function appendChat(role, text) {
+      const box = document.getElementById("chat-box");
+      box.innerText += `${role}: ${text}\n\n`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function sendChat() {
+      const input = document.getElementById("chat-input");
+      const msg = input.value.trim();
+      if (!msg) return;
+      appendChat("你", msg);
+      input.value = "";
+
+      const payload = { message: msg };
+      if (currentSessionId) payload.session_id = currentSessionId;
+
+      try {
+        const data = await fetchJSON("/agent/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        currentSessionId = data.session_id;
+        document.getElementById("session-id").innerText = currentSessionId;
+        appendChat("智能体", data.reply);
+        updateLlmStatus(data.used_model);
+      } catch (err) {
+        appendChat("系统", "调用失败，请检查后端日志或模型配置。");
+        updateLlmStatus(false);
+      }
+    }
+
+    function updateLlmStatus(usedModel) {
+      const el = document.getElementById("llm-status");
+      if (!el) return;
+      if (usedModel) {
+        el.className = "status-badge status-model";
+        el.innerText = "模型状态：已连接（LLM）";
+      } else {
+        el.className = "status-badge status-fallback";
+        el.innerText = "模型状态：回退规则引擎";
+      }
+    }
+
+    async function submitTransaction() {
+      const resourceId = Number(document.getElementById("tx-resource-id").value);
+      const action = document.getElementById("tx-action").value;
+      const userName = document.getElementById("tx-user").value.trim();
+      const quantity = Number(document.getElementById("tx-quantity").value || "1");
+      const note = document.getElementById("tx-note").value.trim();
+      const result = document.getElementById("tx-result");
+
+      if (!resourceId || !action || !userName || quantity <= 0) {
+        result.innerText = "请完整填写资源、操作类型、操作人和数量。";
+        return;
+      }
+
+      try {
+        await fetchJSON("/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource_id: resourceId,
+            user_name: userName,
+            action: action,
+            quantity: quantity,
+            note: note,
+          }),
+        });
+        result.innerText = "提交成功，已写入流水并触发规则检测。";
+        await refreshAll();
+      } catch (err) {
+        result.innerText = "提交失败，请检查数量是否超出可用库存。";
+      }
+    }
+
+    async function genPrivateUrl() {
+      const key = document.getElementById("qiniu-key").value.trim();
+      const expire = document.getElementById("qiniu-expire").value || "3600";
+      if (!key) return;
+      try {
+        const data = await fetchJSON(`/files/qiniu-private-url?key=${encodeURIComponent(key)}&expire_seconds=${expire}`);
+        document.getElementById("qiniu-url").value = data.private_url || JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById("qiniu-url").value = "生成失败，请检查 key 或配置。";
+      }
+    }
+
+    function toggleQiniuAdvanced() {
+      const panel = document.getElementById("qiniu-advanced-panel");
+      const btn = document.getElementById("qiniu-toggle-btn");
+      const isHidden = panel.classList.contains("hidden");
+      if (isHidden) {
+        panel.classList.remove("hidden");
+        btn.innerText = "收起七牛高级功能（私有链接生成）";
+      } else {
+        panel.classList.add("hidden");
+        btn.innerText = "展开七牛高级功能（私有链接生成）";
+      }
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadOverview(), loadResources(), loadAlerts()]);
+    }
+
+    refreshAll();
+    // 自动轮询刷新，便于大屏/答辩展示实时数据。
+    setInterval(refreshAll, 15000);
+  </script>
+</body>
+</html>
