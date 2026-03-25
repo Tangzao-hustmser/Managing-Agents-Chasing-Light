@@ -1,7 +1,7 @@
 """Pydantic 请求/响应模型。"""
 
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -196,3 +196,154 @@ class ChatMessageOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EnhancedAgentRequest(BaseModel):
+    """增强版智能体请求。"""
+    
+    question: str = Field(..., description="用户问题")
+    session_id: Optional[str] = Field(default="default", description="会话ID，用于多轮对话")
+
+
+class EnhancedAgentResponse(BaseModel):
+    """增强版智能体响应。"""
+    
+    session_id: str = Field(..., description="会话ID")
+    answer: str = Field(..., description="智能体回答")
+    success: bool = Field(..., description="是否成功使用LLM")
+    real_time_data: dict = Field(..., description="实时数据上下文")
+
+
+class SchedulerRequest(BaseModel):
+    """智能调度请求。"""
+    
+    resource_id: int = Field(..., description="资源ID")
+    duration_minutes: int = Field(..., description="使用时长（分钟）")
+    preferred_start: Optional[datetime] = Field(default=None, description="偏好开始时间")
+
+
+class TimeSlot(BaseModel):
+    """时段信息。"""
+    
+    start: datetime = Field(..., description="开始时间")
+    end: datetime = Field(..., description="结束时间")
+    day: str = Field(..., description="日期")
+    hour: int = Field(..., description="小时")
+    score: float = Field(..., description="评分（0-100）")
+    conflicts: List[Dict] = Field(default_factory=list, description="冲突信息")
+
+
+class SchedulerResponse(BaseModel):
+    """智能调度响应。"""
+    
+    resource_id: int = Field(..., description="资源ID")
+    duration_minutes: int = Field(..., description="使用时长（分钟）")
+    optimal_slots: List[TimeSlot] = Field(..., description="最优时段推荐")
+    generated_at: datetime = Field(..., description="生成时间")
+
+
+class DemandPrediction(BaseModel):
+    """需求预测结果。"""
+    
+    date: str = Field(..., description="预测日期")
+    predicted_demand: float = Field(..., description="预测需求")
+    confidence: float = Field(..., description="置信度")
+    recommendation: str = Field(..., description="建议")
+
+
+class DemandPredictionResponse(BaseModel):
+    """需求预测响应。"""
+    
+    resource_id: int = Field(..., description="资源ID")
+    days_ahead: int = Field(..., description="预测天数")
+    predictions: List[DemandPrediction] = Field(..., description="预测结果")
+    generated_at: datetime = Field(..., description="生成时间")
+
+
+class OptimizationRecommendation(BaseModel):
+    """优化建议。"""
+    
+    resource_id: int = Field(..., description="资源ID")
+    resource_name: str = Field(..., description="资源名称")
+    utilization: float = Field(..., description="利用率")
+    recommendation: str = Field(..., description="优化建议")
+    priority: str = Field(..., description="优先级")
+
+
+class OptimizationResponse(BaseModel):
+    """资源优化响应。"""
+    
+    total_devices: int = Field(..., description="设备总数")
+    recommendations: List[OptimizationRecommendation] = Field(..., description="优化建议")
+    generated_at: datetime = Field(..., description="生成时间")
+
+
+class PeriodInfo(BaseModel):
+    """分析时间段信息。"""
+    
+    start_date: str = Field(..., description="开始日期")
+    end_date: str = Field(..., description="结束日期")
+    days: int = Field(..., description="天数")
+
+
+class SummaryStats(BaseModel):
+    """基础统计信息。"""
+    
+    total_transactions: int = Field(..., description="总交易量")
+    active_users: int = Field(..., description="活跃用户数")
+    average_device_utilization: float = Field(..., description="平均设备利用率")
+    material_consumption: int = Field(..., description="物料消耗量")
+    daily_avg_transactions: float = Field(..., description="日均交易量")
+
+
+class ResourceUsageAnalysis(BaseModel):
+    """资源使用分析。"""
+    
+    popular_resources: List[Dict] = Field(..., description="热门资源")
+    high_utilization_devices: List[Dict] = Field(..., description="高利用率设备")
+    analysis_period: str = Field(..., description="分析周期")
+
+
+class UserBehaviorAnalysis(BaseModel):
+    """用户行为分析。"""
+    
+    top_users: List[Dict] = Field(..., description="活跃用户排行榜")
+    user_patterns: List[Dict] = Field(..., description="用户行为模式")
+
+
+class CostAnalysis(BaseModel):
+    """成本分析。"""
+    
+    total_cost: float = Field(..., description="总成本")
+    daily_avg_cost: float = Field(..., description="日均成本")
+    cost_breakdown: List[Dict] = Field(..., description="成本明细")
+    high_cost_items: List[Dict] = Field(..., description="高成本项目")
+
+
+class TrendAnalysis(BaseModel):
+    """趋势分析。"""
+    
+    daily_usage: List[Dict] = Field(..., description="日使用趋势")
+    resource_category_trends: List[Dict] = Field(..., description="资源类别趋势")
+
+
+class AnalyticsRecommendation(BaseModel):
+    """分析建议。"""
+    
+    type: str = Field(..., description="建议类型")
+    resource_id: int = Field(..., description="资源ID")
+    resource_name: str = Field(..., description="资源名称")
+    message: str = Field(..., description="建议内容")
+    priority: str = Field(..., description="优先级")
+
+
+class AnalyticsResponse(BaseModel):
+    """综合数据分析响应。"""
+    
+    period: PeriodInfo = Field(..., description="分析周期")
+    summary: SummaryStats = Field(..., description="基础统计")
+    resource_analysis: ResourceUsageAnalysis = Field(..., description="资源使用分析")
+    user_behavior: UserBehaviorAnalysis = Field(..., description="用户行为分析")
+    cost_analysis: CostAnalysis = Field(..., description="成本分析")
+    trends: TrendAnalysis = Field(..., description="趋势分析")
+    recommendations: List[AnalyticsRecommendation] = Field(..., description="优化建议")
