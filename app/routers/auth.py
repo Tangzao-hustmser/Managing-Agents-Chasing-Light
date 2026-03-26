@@ -68,11 +68,16 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     try:
         user = login_user(db, payload.username, payload.password)
         return {
-            "user_id": user.id,
-            "username": user.username,
-            "real_name": user.real_name,
-            "role": user.role,
-            "token": f"Bearer {user.id}"  # 简化实现
+            "token": f"Bearer {user.id}",  # 简化实现
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "real_name": user.real_name,
+                "role": user.role,
+                "student_id": user.student_id,
+                "email": user.email,
+                "is_active": user.is_active
+            }
         }
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))

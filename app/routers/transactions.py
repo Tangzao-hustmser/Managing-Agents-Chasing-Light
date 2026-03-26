@@ -45,18 +45,13 @@ def create_transaction(
                 detail=f"时段冲突：{conflict_info}"
             )
 
-    # 库存检查
+    # 库存检查（只检查，不更新）
     if payload.action in ("borrow", "consume", "lost"):
         if resource.available_count < payload.quantity:
             raise HTTPException(status_code=400, detail="可用数量不足")
-        resource.available_count -= payload.quantity
     elif payload.action in ("return", "replenish"):
-        resource.available_count += payload.quantity
-        if resource.available_count > resource.total_count:
-            if resource.category == "material":
-                resource.total_count = resource.available_count
-            else:
-                resource.available_count = resource.total_count
+        # 归还和补货不需要检查库存限制
+        pass
     else:
         raise HTTPException(status_code=400, detail="不支持的 action")
 
@@ -84,14 +79,28 @@ def create_transaction(
         tx.approval_id = approval_task.id
     else:
         tx.is_approved = True
+        # 只有审批通过的事务才更新库存
+        if payload.action in ("borrow", "consume", "lost"):
+            resource.available_count -= payload.quantity
+        elif payload.action in ("return", "replenish"):
+            resource.available_count += payload.quantity
+            if resource.available_count > resource.total_count:
+                if resource.category == "material":
+                    resource.total_count = resource.available_count
+                else:
+                    resource.available_count = resource.total_count
 
-    db.add(tx)
-    run_inventory_rules(db, resource)
-    run_utilization_rules(db, resource)
-    run_waste_rules(db, resource, payload.action, payload.quantity)
-    db.commit()
-    db.refresh(tx)
-    return tx
+    try:
+        db.add(tx)
+        run_inventory_rules(db, resource)
+        run_utilization_rules(db, resource)
+        run_waste_rules(db, resource, payload.action, payload.quantity)
+        db.commit()
+        db.refresh(tx)
+        return tx
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"数据库操作失败: {str(e)}")
 
 
 @router.get("", response_model=list[TransactionOut])

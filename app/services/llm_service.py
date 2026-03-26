@@ -43,7 +43,8 @@ def _build_data_context(db: Session) -> str:
     lines.append("【最近流水】")
     if latest_tx:
         for t in latest_tx:
-            lines.append(f"- {t.user_name} {t.action} 资源#{t.resource_id} 数量{t.quantity}")
+            user_name = t.user.real_name if t.user else f"用户#{t.user_id}"
+            lines.append(f"- {user_name} {t.action} 资源#{t.resource_id} 数量{t.quantity}")
     else:
         lines.append("- 无")
 

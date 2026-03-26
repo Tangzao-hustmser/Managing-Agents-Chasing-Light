@@ -330,7 +330,8 @@
         <div class="card">
           <h3 class="section-title">资源申请</h3>
           
-          <div class="row">
+          <div class="form-group">
+            <label for="tx-action">申请类型</label>
             <select id="tx-action">
               <option value="borrow">借用设备</option>
               <option value="consume">领用物料</option>
@@ -338,22 +339,38 @@
             </select>
           </div>
           
-          <div class="row">
-            <select id="tx-resource-id"></select>
+          <div class="form-group">
+            <label for="tx-resource-id">选择资源</label>
+            <select id="tx-resource-id">
+              <option value="">请先选择申请类型</option>
+            </select>
           </div>
           
-          <div id="borrow-fields">
-            <input type="datetime-local" id="borrow-time" placeholder="借用时间" />
-            <input type="datetime-local" id="return-time" placeholder="归还时间" />
+          <div id="borrow-fields" class="hidden">
+            <div class="form-group">
+              <label for="borrow-time">借用时间</label>
+              <input type="datetime-local" id="borrow-time" required />
+            </div>
+            <div class="form-group">
+              <label for="return-time">归还时间</label>
+              <input type="datetime-local" id="return-time" required />
+            </div>
           </div>
           
           <div id="consume-fields" class="hidden">
-            <input type="number" id="consume-quantity" min="1" value="1" placeholder="数量" />
+            <div class="form-group">
+              <label for="consume-quantity">领用数量</label>
+              <input type="number" id="consume-quantity" min="1" value="1" required />
+            </div>
           </div>
           
-          <textarea id="tx-note" placeholder="备注（可选）"></textarea>
-          <button class="btn" onclick="submitTransaction()">✓ 提交申请</button>
-          <div id="tx-result" style="font-size: 12px; margin-top: 8px; color: #059669;"></div>
+          <div class="form-group">
+            <label for="tx-note">备注说明（可选）</label>
+            <textarea id="tx-note" placeholder="请简要说明使用目的..."></textarea>
+          </div>
+          
+          <button class="btn" onclick="submitTransaction()">📤 提交申请</button>
+          <div id="tx-result" style="font-size: 12px; margin-top: 8px;"></div>
         </div>
         
         <!-- 预警信息 -->
@@ -364,7 +381,7 @@
         
         <!-- 审批中心（仅管理员） -->
         <div class="card" style="margin-top: 12px;" id="approval-panel" class="hidden">
-          <h3 class="section-title">⚠️ 待审批申请</h3>
+          <h3 class="section-title">📋 待审批申请</h3>
           <div id="approvals-box" style="max-height: 200px; overflow-y: auto;"></div>
         </div>
       </div>
@@ -372,7 +389,7 @@
     
     <!-- AI 智能体 -->
     <div class="card" style="margin-top: 20px;">
-      <h3 class="section-title">💬 智能资源助手</h3>
+      <h3 class="section-title">🤖 智能资源助手</h3>
       <div class="chat-box" id="chat-box"></div>
       <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
         会话 ID：<span id="session-id">新建中...</span>
@@ -380,7 +397,7 @@
       <div class="row">
         <textarea id="chat-input" placeholder="问我任何关于资源的问题..."></textarea>
       </div>
-      <button class="btn" onclick="sendChat()">🚀 发送</button>
+      <button class="btn" onclick="sendChat()">💬 发送</button>
     </div>
   </div>
   
@@ -420,11 +437,73 @@
       if (currentUser.role === 'admin') {
         document.getElementById('approval-panel').classList.remove('hidden');
       }
+      
+      // 添加动作类型变化监听器
+      document.getElementById('tx-action').addEventListener('change', toggleActionFields);
+      toggleActionFields(); // 初始化显示正确的字段
     }
     
     function getRoleLabel(role) {
       const labels = { admin: '👨‍💼 管理员', student: '👨‍🎓 学生', teacher: '👨‍🏫 教师' };
       return labels[role] || role;
+    }
+    
+    function toggleActionFields() {
+      const action = document.getElementById('tx-action').value;
+      const borrowFields = document.getElementById('borrow-fields');
+      const consumeFields = document.getElementById('consume-fields');
+      
+      // 隐藏所有字段
+      borrowFields.classList.add('hidden');
+      consumeFields.classList.add('hidden');
+      
+      // 根据动作类型显示相应字段
+      if (action === 'borrow') {
+        borrowFields.classList.remove('hidden');
+      } else if (action === 'consume') {
+        consumeFields.classList.remove('hidden');
+      }
+      
+      // 根据动作类型筛选资源
+      updateResourceDropdown(action);
+    }
+    
+    function updateResourceDropdown(action) {
+      const select = document.getElementById('tx-resource-id');
+      select.innerHTML = '';
+      
+      // 根据动作类型筛选合适的资源
+      const filteredResources = resourceCache.filter(item => {
+        if (action === 'borrow') {
+          // 借用设备：只显示设备类资源
+          return item.category === 'device' && item.available_count > 0;
+        } else if (action === 'consume') {
+          // 领用物料：只显示物料类资源
+          return item.category === 'material' && item.available_count > 0;
+        } else if (action === 'return') {
+          // 归还设备：只显示设备类资源
+          return item.category === 'device';
+        }
+        return true; // 其他情况显示所有资源
+      });
+      
+      if (filteredResources.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.innerText = action === 'borrow' ? '暂无可用设备' : 
+                       action === 'consume' ? '暂无可用物料' : '暂无资源';
+        opt.disabled = true;
+        select.appendChild(opt);
+        return;
+      }
+      
+      for (const item of filteredResources) {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        const categoryLabel = item.category === 'device' ? '🔧 设备' : '📦 物料';
+        opt.innerText = `${categoryLabel} - ${item.name} (可用: ${item.available_count})`;
+        select.appendChild(opt);
+      }
     }
     
     // ============ API 调用 ============
@@ -466,14 +545,18 @@
     async function loadResources() {
       try {
         const list = await fetchJSON('/resources');
-        if (!list) return;
+        if (!list || !Array.isArray(list)) {
+          console.warn('资源列表为空或格式错误');
+          resourceCache = [];
+          return;
+        }
         
         resourceCache = list;
         
         // 更新资源列表表格
         const tbody = document.getElementById('resources-tbody');
         tbody.innerHTML = '';
-        for (const item of list.slice(0, 10)) {
+        for (const item of (list || []).slice(0, 10)) {
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td>${item.name}</td>
@@ -495,6 +578,7 @@
         }
       } catch (err) {
         console.error('加载资源失败', err);
+        resourceCache = [];
       }
     }
     
@@ -506,7 +590,7 @@
         const tbody = document.getElementById('transactions-tbody');
         tbody.innerHTML = '';
         
-        for (const tx of data.slice(0, 8)) {
+        for (const tx of (data || []).slice(0, 8)) {
           const tr = document.createElement('tr');
           const actionLabel = { borrow: '借用', return: '归还', consume: '领用', replenish: '补货', lost: '丢失' }[tx.action];
           const time = new Date(tx.created_at).toLocaleString('zh-CN');
@@ -532,7 +616,7 @@
         const box = document.getElementById('alerts-box');
         box.innerHTML = '';
         
-        for (const alert of data.slice(0, 5)) {
+        for (const alert of (data || []).slice(0, 5)) {
           const div = document.createElement('div');
           div.className = 'alert-item';
           div.innerText = `⚠️ ${alert.message}\n时间: ${new Date(alert.created_at).toLocaleString()}`;
@@ -553,7 +637,7 @@
         const box = document.getElementById('approvals-box');
         box.innerHTML = '';
         
-        for (const task of data.slice(0, 5)) {
+        for (const task of (data || []).slice(0, 5)) {
           const div = document.createElement('div');
           div.className = 'alert-item';
           div.style.borderLeftColor = '#f59e0b';
@@ -577,21 +661,27 @@
       const resultEl = document.getElementById('tx-result');
       
       try {
+        // 基本验证
+        if (!resourceId) throw new Error('请选择资源');
+        
         const body = {
           resource_id: parseInt(resourceId),
           action,
-          note,
+          note: note || '',
+          purpose: '日常使用', // 添加必需的purpose字段
           quantity: 1
         };
         
         if (action === 'borrow') {
           body.borrow_time = document.getElementById('borrow-time').value;
-          body.return_time = document.getElementById('return-time').value;
-          if (!body.borrow_time || !body.return_time) throw new Error('请填写借用时间');
+          body.expected_return_time = document.getElementById('return-time').value;
+          if (!body.borrow_time || !body.expected_return_time) throw new Error('请填写借用时间');
         }
         
         if (action === 'consume') {
-          body.quantity = parseInt(document.getElementById('consume-quantity').value) || 1;
+          const quantity = parseInt(document.getElementById('consume-quantity').value) || 1;
+          if (quantity <= 0) throw new Error('数量必须大于0');
+          body.quantity = quantity;
         }
         
         const resp = await fetch('/transactions/', {
@@ -600,19 +690,36 @@
           body: JSON.stringify(body)
         });
         
-        if (!resp.ok) throw new Error('提交失败');
+        if (!resp.ok) {
+          // 尝试解析JSON错误信息，如果失败则使用状态文本
+          let errorMessage = '提交失败';
+          try {
+            const errorData = await resp.json();
+            errorMessage = errorData.detail || errorData.message || '提交失败';
+          } catch (jsonError) {
+            // 如果JSON解析失败，使用HTTP状态文本
+            errorMessage = resp.statusText || '提交失败';
+          }
+          throw new Error(errorMessage);
+        }
         
         resultEl.style.color = '#059669';
-        resultEl.innerText = '✓ 申请已提交';
+        resultEl.innerText = '✅ 申请已提交';
+        
+        // 只有在成功提交后才刷新数据
         await refreshAll();
         
+        // 重置表单
         setTimeout(() => {
           resultEl.innerText = '';
           document.getElementById('tx-note').value = '';
+          document.getElementById('consume-quantity').value = '1';
+          document.getElementById('borrow-time').value = '';
+          document.getElementById('return-time').value = '';
         }, 3000);
       } catch (err) {
         resultEl.style.color = '#dc2626';
-        resultEl.innerText = '✗ ' + err.message;
+        resultEl.innerText = '❌ ' + err.message;
       }
     }
     
@@ -633,22 +740,22 @@
         const resp = await fetch('/agent/chat', {
           method: 'POST',
           headers: getHeaders(),
-          body: JSON.stringify({ user_message: input, session_id: currentSessionId })
+          body: JSON.stringify({ message: input, session_id: currentSessionId })
         });
         
         const data = await resp.json();
         currentSessionId = data.session_id;
-        document.getElementById('session-id').innerText = currentSessionId.slice(0, 8) + '...';
+        document.getElementById('session-id').innerText = (currentSessionId || '').slice(0, 8) + '...';
         
         const aiMsg = document.createElement('div');
         aiMsg.className = 'message ai';
-        aiMsg.innerText = data.response || '无法获取回复，请稍后重试';
+        aiMsg.innerText = data.reply || '无法获取回复，请稍后重试';
         chatBox.appendChild(aiMsg);
         chatBox.scrollTop = chatBox.scrollHeight;
       } catch (err) {
         const errMsg = document.createElement('div');
         errMsg.className = 'message ai';
-        errMsg.innerText = '⚠️ 错误：' + err.message;
+        errMsg.innerText = '❌ 错误：' + err.message;
         chatBox.appendChild(errMsg);
       }
     }
