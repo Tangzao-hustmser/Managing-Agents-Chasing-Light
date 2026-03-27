@@ -39,6 +39,7 @@ def agent_chat(
                 payload.session_id,
                 confirm=payload.confirm,
                 confirmation_token=payload.confirmation_token,
+                llm_options=payload.llm_options.model_dump(exclude_none=True) if payload.llm_options else None,
             )
         )
     except ValueError as exc:

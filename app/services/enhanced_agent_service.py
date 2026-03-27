@@ -17,6 +17,7 @@ def enhanced_ask_agent(
     *,
     confirm: bool = False,
     confirmation_token: Optional[str] = None,
+    llm_options: Optional[Dict] = None,
 ) -> Dict:
     """Return enhanced agent output with real-time context."""
     result = chat_with_agent(
@@ -26,6 +27,7 @@ def enhanced_ask_agent(
         session_id=session_id,
         confirm=confirm,
         confirmation_token=confirmation_token,
+        llm_options=llm_options,
     )
     return {
         "session_id": result["session_id"],

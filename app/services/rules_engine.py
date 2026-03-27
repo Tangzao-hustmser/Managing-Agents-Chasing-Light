@@ -7,6 +7,15 @@ from app.models import Alert, Resource
 
 def run_inventory_rules(db: Session, resource: Resource) -> None:
     """库存规则：可用数量低于阈值时发出预警。"""
+    # 清除已解决的低库存预警
+    existing_alerts = db.query(Alert).filter(
+        Alert.type == "low_inventory",
+        Alert.message.like(f"%{resource.name}%")
+    ).all()
+    for alert in existing_alerts:
+        if resource.available_count > resource.min_threshold:
+            db.delete(alert)
+    
     if resource.available_count <= resource.min_threshold:
         alert = Alert(
             level="warn",

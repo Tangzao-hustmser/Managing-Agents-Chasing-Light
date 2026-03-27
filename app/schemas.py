@@ -341,6 +341,16 @@ class AgentPendingAction(BaseModel):
     proposed_payload: Dict[str, Any] = Field(default_factory=dict)
 
 
+class LLMOptions(BaseModel):
+    """Per-request LLM runtime overrides provided by the current user."""
+
+    enabled: bool = True
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    timeout: Optional[int] = Field(default=None, ge=5, le=120)
+
+
 class AgentChatIn(BaseModel):
     """Chat request."""
 
@@ -348,6 +358,7 @@ class AgentChatIn(BaseModel):
     session_id: Optional[str] = None
     confirm: bool = False
     confirmation_token: Optional[str] = None
+    llm_options: Optional[LLMOptions] = None
 
 
 class AgentChatOut(BaseModel):
@@ -376,6 +387,7 @@ class EnhancedAgentRequest(BaseModel):
     session_id: Optional[str] = None
     confirm: bool = False
     confirmation_token: Optional[str] = None
+    llm_options: Optional[LLMOptions] = None
 
 
 class EnhancedAgentResponse(BaseModel):
@@ -575,6 +587,19 @@ class AnomalyScoreBreakdown(BaseModel):
     resources: List[AnomalyScoreItem] = Field(default_factory=list)
 
 
+class ReplenishmentSuggestion(BaseModel):
+    """Replenishment suggestion."""
+
+    resource_id: int
+    resource_name: str
+    current_stock: int
+    consumption_rate_per_day: float
+    days_to_depletion: Optional[float]
+    suggested_replenish_quantity: int
+    priority: str
+    reason: str
+
+
 class AnalyticsResponse(BaseModel):
     """Composite analytics response."""
 
@@ -585,6 +610,7 @@ class AnalyticsResponse(BaseModel):
     cost_analysis: CostAnalysis
     trends: TrendAnalysis
     recommendations: List[AnalyticsRecommendation]
+    replenishment_suggestions: List[ReplenishmentSuggestion]
     fairness_metrics: FairnessMetrics
     overdue_returns: List[OverdueReturnItem]
     prime_time_monopolies: List[PrimeTimeMonopolyItem]

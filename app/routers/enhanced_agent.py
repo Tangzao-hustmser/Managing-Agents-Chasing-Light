@@ -29,6 +29,7 @@ def enhanced_ask_agent_endpoint(
             session_id=payload.session_id,
             confirm=payload.confirm,
             confirmation_token=payload.confirmation_token,
+            llm_options=payload.llm_options.model_dump(exclude_none=True) if payload.llm_options else None,
         )
         return EnhancedAgentResponse(**result)
     except ValueError as exc:

@@ -76,6 +76,91 @@ def test_scheduler_endpoint_returns_slots(test_env):
     assert isinstance(response.json()["optimal_slots"], list)
 
 
+def test_agent_chat_schedule_reply_is_direct_and_actionable(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    response = client.post(
+        "/agent/chat",
+        json={"message": "我明天下午想用3D打印机，有空档吗"},
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    reply = response.json()["reply"]
+    assert "3D Printer" in reply
+    assert "有空档" in reply or "当前没有完全空档" in reply
+    assert "建议" in reply
+    assert "时段如下" in reply
+
+
+def test_agent_chat_understands_day_after_tomorrow_schedule(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    expected_day = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
+    response = client.post(
+        "/agent/chat",
+        json={"message": "我后天下午想用3D打印机，有空档吗"},
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    reply = response.json()["reply"]
+    assert expected_day in reply
+
+
+def test_agent_chat_accepts_request_level_llm_options(test_env, monkeypatch):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+
+    called = {}
+
+    def fake_llm_call(messages, runtime_config):
+        called["base_url"] = runtime_config.base_url
+        called["api_key"] = runtime_config.api_key
+        called["model"] = runtime_config.model
+        return "这是来自大模型的回答"
+
+    monkeypatch.setattr("app.services.llm_service._call_openai_compatible", fake_llm_call)
+
+    response = client.post(
+        "/agent/chat",
+        json={
+            "message": "查一下 3D Printer 的库存",
+            "llm_options": {
+                "enabled": True,
+                "base_url": "https://example.com/v1",
+                "api_key": "test-key",
+                "model": "test-model",
+                "timeout": 20,
+            },
+        },
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["used_model"] is True
+    assert data["reply"] == "这是来自大模型的回答"
+    assert called == {
+        "base_url": "https://example.com/v1",
+        "api_key": "test-key",
+        "model": "test-model",
+    }
+
+
+def test_agent_chat_provides_governance_suggestions_for_topic_d(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    response = client.post(
+        "/agent/chat",
+        json={"message": "怎么优化资源利用率并减少耗材浪费和工具丢失？"},
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    reply = response.json()["reply"]
+    assert "建议优先做这 3 件事" in reply
+    assert "均衡占用" in reply
+    assert "控制浪费" in reply
+    assert "降低丢失风险" in reply
+
+
 def test_analytics_and_qiniu_are_authenticated(test_env):
     client = test_env["client"]
     assert client.get("/analytics/overview").status_code == 401
@@ -116,6 +201,35 @@ def test_enhanced_agent_route_returns_real_time_data(test_env):
     assert data["success"] is True
     assert "real_time_data" in data
     assert "low_inventory_resources" in data["real_time_data"]
+
+
+def test_enhanced_agent_accepts_request_level_llm_options(test_env, monkeypatch):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+
+    def fake_llm_call(messages, runtime_config):
+        return "增强路由大模型回复"
+
+    monkeypatch.setattr("app.services.llm_service._call_openai_compatible", fake_llm_call)
+
+    response = client.post(
+        "/enhanced-agent/ask",
+        json={
+            "question": "查一下 3D Printer 的库存",
+            "llm_options": {
+                "enabled": True,
+                "base_url": "https://example.com/v1",
+                "api_key": "test-key",
+                "model": "test-model",
+                "timeout": 20,
+            },
+        },
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "增强路由大模型回复"
+    assert data["success"] is True
 
 
 def test_enhanced_analytics_admin_only_and_schema(test_env):

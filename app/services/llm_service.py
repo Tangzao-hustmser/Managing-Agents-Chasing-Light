@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,54 @@ from app.services.agent_tool_service import (
     run_business_query,
     store_pending_action,
 )
+
+
+@dataclass
+class LLMRuntimeConfig:
+    """Runtime LLM connection config resolved from request overrides and env."""
+
+    base_url: str
+    api_key: str
+    model: str
+    timeout: int
+
+
+def _clean_optional_str(value: Optional[str]) -> str:
+    return (value or "").strip()
+
+
+def _resolve_runtime_config(llm_options: Optional[Dict[str, Any]] = None) -> Optional[LLMRuntimeConfig]:
+    """Resolve per-request LLM config; request-level overrides take precedence."""
+    def _safe_timeout(raw_value: Any) -> int:
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return int(settings.llm_timeout)
+
+    if llm_options:
+        if llm_options.get("enabled") is False:
+            return None
+        base_url = _clean_optional_str(llm_options.get("base_url")) or _clean_optional_str(settings.llm_base_url)
+        api_key = _clean_optional_str(llm_options.get("api_key")) or _clean_optional_str(settings.llm_api_key)
+        model = _clean_optional_str(llm_options.get("model")) or _clean_optional_str(settings.llm_model)
+        timeout = _safe_timeout(llm_options.get("timeout") or settings.llm_timeout)
+    else:
+        if not settings.llm_enabled:
+            return None
+        base_url = _clean_optional_str(settings.llm_base_url)
+        api_key = _clean_optional_str(settings.llm_api_key)
+        model = _clean_optional_str(settings.llm_model)
+        timeout = _safe_timeout(settings.llm_timeout)
+
+    if not base_url or not api_key or not model:
+        return None
+
+    return LLMRuntimeConfig(
+        base_url=base_url.rstrip("/"),
+        api_key=api_key,
+        model=model,
+        timeout=max(5, min(timeout, 120)),
+    )
 
 
 def _load_history(db: Session, session_id: str, limit: int = 12) -> List[Dict[str, str]]:
@@ -79,24 +128,20 @@ def clear_session_messages(db: Session, current_user: User, session_id: str) -> 
     return deleted
 
 
-def _call_openai_compatible(messages: List[Dict[str, str]]) -> str:
+def _call_openai_compatible(messages: List[Dict[str, str]], runtime_config: LLMRuntimeConfig) -> str:
     """Call an OpenAI-compatible /chat/completions endpoint."""
-    base_url = settings.llm_base_url.rstrip("/")
-    if not base_url or not settings.llm_api_key or not settings.llm_model:
-        raise ValueError("LLM configuration is incomplete")
-
     payload: Dict[str, Any] = {
-        "model": settings.llm_model,
+        "model": runtime_config.model,
         "messages": messages,
         "temperature": 0.2,
     }
     headers = {
-        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Authorization": f"Bearer {runtime_config.api_key}",
         "Content-Type": "application/json",
     }
-    timeout = httpx.Timeout(connect=5.0, read=float(settings.llm_timeout), write=10.0, pool=5.0)
+    timeout = httpx.Timeout(connect=5.0, read=float(runtime_config.timeout), write=10.0, pool=5.0)
     with httpx.Client(timeout=timeout) as client:
-        response = client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
+        response = client.post(f"{runtime_config.base_url}/chat/completions", headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
@@ -104,13 +149,16 @@ def _call_openai_compatible(messages: List[Dict[str, str]]) -> str:
 
 def get_llm_response(messages: List[Dict[str, str]]) -> str:
     """Compatibility wrapper for other modules."""
-    return _call_openai_compatible(messages)
+    runtime_config = _resolve_runtime_config()
+    if not runtime_config:
+        raise ValueError("LLM configuration is incomplete")
+    return _call_openai_compatible(messages, runtime_config)
 
 
 def check_llm_connectivity() -> dict:
     """Probe the configured model endpoint."""
-    base_url = settings.llm_base_url.rstrip("/")
-    if not base_url or not settings.llm_api_key or not settings.llm_model:
+    runtime_config = _resolve_runtime_config()
+    if not runtime_config:
         return {
             "ok": False,
             "reason": "config_incomplete",
@@ -118,7 +166,7 @@ def check_llm_connectivity() -> dict:
         }
 
     try:
-        _call_openai_compatible([{"role": "user", "content": "ping"}])
+        _call_openai_compatible([{"role": "user", "content": "ping"}], runtime_config)
         return {"ok": True, "reason": "success", "message": "LLM connectivity is healthy"}
     except httpx.ConnectError as exc:
         return {
@@ -148,9 +196,11 @@ def _maybe_refine_with_llm(
     session_id: str,
     query_result: Dict[str, str],
     current_user: User,
+    llm_options: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, bool]:
     deterministic_answer = query_result["answer"]
-    if not settings.llm_enabled:
+    runtime_config = _resolve_runtime_config(llm_options)
+    if not runtime_config:
         return deterministic_answer, False
 
     try:
@@ -162,7 +212,10 @@ def _maybe_refine_with_llm(
                 "content": (
                     "You are the lab resource management assistant. "
                     "Always ground your answer in the provided business tool output. "
-                    "Do not invent inventory numbers or approval decisions. Respond in Chinese."
+                    "Do not invent inventory numbers or approval decisions. "
+                    "The first sentence must directly answer the user's question. "
+                    "If the user asks about scheduling/availability, include one recommended start time and a brief reason. "
+                    "Respond in Chinese."
                 ),
             },
             {
@@ -171,15 +224,15 @@ def _maybe_refine_with_llm(
             },
             {
                 "role": "system",
-                "content": f"Deterministic tool answer: {deterministic_answer}",
+                "content": f"Deterministic tool intent: {query_result['intent']}. Deterministic tool answer: {deterministic_answer}",
             },
             *history[-8:],
             {
                 "role": "user",
-                "content": f"请基于上面的事实，优化表达但不要改变结论。当前用户：{current_user.real_name}。",
+                "content": f"请基于上面的事实，优化表达但不要改变结论；语气自然、可执行。当前用户：{current_user.real_name}。",
             },
         ]
-        return _call_openai_compatible(messages), True
+        return _call_openai_compatible(messages, runtime_config), True
     except Exception:
         return deterministic_answer, False
 
@@ -192,6 +245,7 @@ def chat_with_agent(
     *,
     confirm: bool = False,
     confirmation_token: Optional[str] = None,
+    llm_options: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """Chat entry point that supports executable business tools."""
     session = ensure_chat_session(db, session_id, current_user)
@@ -247,7 +301,7 @@ def chat_with_agent(
         }
 
     query_result = run_business_query(db, user_message)
-    reply, used_model = _maybe_refine_with_llm(db, sid, query_result, current_user)
+    reply, used_model = _maybe_refine_with_llm(db, sid, query_result, current_user, llm_options)
     _save_message(db, sid, "assistant", reply)
     return {
         "session_id": sid,

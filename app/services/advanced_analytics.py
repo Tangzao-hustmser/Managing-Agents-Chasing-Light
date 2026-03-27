@@ -117,6 +117,7 @@ class AdvancedAnalytics:
             "cost_analysis": self._cost_analysis(transactions, start_date, end_date),
             "trends": self._trends(transactions),
             "recommendations": self._recommendations(borrow_transactions, project_variance),
+            "replenishment_suggestions": self._replenishment_suggestions(transactions, days),
             "fairness_metrics": fairness_metrics,
             "overdue_returns": overdue_returns,
             "prime_time_monopolies": prime_monopolies,
@@ -430,6 +431,42 @@ class AdvancedAnalytics:
                 )
 
         return recommendations[:10]
+
+    def _replenishment_suggestions(self, transactions: List[Transaction], days: int) -> List[Dict]:
+        """Generate predictive replenishment suggestions based on consumption patterns."""
+        suggestions = []
+        material_resources = self.db.query(Resource).filter(Resource.category == "material").all()
+        
+        for resource in material_resources:
+            # Calculate consumption rate
+            consume_transactions = [
+                tx for tx in transactions 
+                if tx.resource_id == resource.id and tx.action in {"consume", "lost"} and tx.status == "approved"
+            ]
+            if not consume_transactions:
+                continue
+                
+            total_consumed = sum(tx.quantity for tx in consume_transactions)
+            consumption_rate = total_consumed / max(1, days)  # per day
+            
+            # Predict future demand
+            days_to_depletion = resource.available_count / consumption_rate if consumption_rate > 0 else float('inf')
+            
+            if days_to_depletion <= 14:  # Less than 2 weeks
+                suggested_quantity = max(10, int(consumption_rate * 30))  # 1 month supply
+                suggestions.append({
+                    "resource_id": resource.id,
+                    "resource_name": resource.name,
+                    "current_stock": resource.available_count,
+                    "consumption_rate_per_day": round(consumption_rate, 2),
+                    "days_to_depletion": round(days_to_depletion, 1) if days_to_depletion != float('inf') else None,
+                    "suggested_replenish_quantity": suggested_quantity,
+                    "priority": "high" if days_to_depletion <= 7 else "medium",
+                    "reason": f"预计{days_to_depletion:.1f}天内耗尽" if days_to_depletion != float('inf') else "库存不足",
+                })
+        
+        suggestions.sort(key=lambda x: x["days_to_depletion"] or float('inf'))
+        return suggestions[:10]
 
     def _anomaly_scores(
         self,

@@ -26,6 +26,7 @@ class SmartScheduler:
 
         base_time = preferred_start or datetime.utcnow()
         base_time = max(base_time, datetime.utcnow())
+        self._preferred_hour = preferred_start.hour if preferred_start else None
         candidates = self._generate_time_slots(base_time, duration_minutes)
 
         scored = []
@@ -102,6 +103,14 @@ class SmartScheduler:
             score -= 10
         if 9 <= start_time.hour <= 17:
             score += 8
+
+        # 优先匹配preferred_start的时间段
+        if hasattr(self, '_preferred_hour') and self._preferred_hour is not None:
+            hour_diff = abs(start_time.hour - self._preferred_hour)
+            if hour_diff <= 2:
+                score += 20
+            elif hour_diff <= 4:
+                score += 10
 
         recent_history = self._historical_usage(resource_id, start_time.weekday(), start_time.hour)
         score -= min(recent_history * 5, 20)

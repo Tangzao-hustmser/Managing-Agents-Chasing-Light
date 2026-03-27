@@ -23,6 +23,7 @@
     .approval-item,.alert-item,.chat-message{border:1px solid #d8e5ec;border-radius:14px;padding:12px 14px;background:#fff}.approval-item .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:13px;margin:8px 0}.suggestion{background:#eef8f7;border-radius:12px;padding:10px 12px;font-size:13px;margin:8px 0;line-height:1.7}
     .alert-item{border-left:5px solid #b7791f;background:#fff9ee}.alert-item.error{border-left-color:#c53030;background:#fff1f1}.chat-box{display:grid;gap:8px;height:280px;overflow:auto;padding:12px;border:1px solid #d8e5ec;border-radius:14px;background:#f7fbfc}
     .chat-message.user{justify-self:end;max-width:88%;background:#dfeeff;color:#214a87}.chat-message.assistant{max-width:88%}.tiny{font-size:12px;color:#617987;line-height:1.7}.empty{font-size:13px;color:#617987;padding:6px 2px}
+    .inline-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#244458}.inline-check input{width:auto}
     @media (max-width:1100px){.stats{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}}@media (max-width:720px){.stats,.grid,.approval-item .meta{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
@@ -137,9 +138,19 @@
 
         <section class="card">
           <h2>智能体助手</h2>
-          <div class="muted" style="margin-bottom:12px;">统一入口：先选业务工具，再决定是否调用大模型组织回答。</div>
+          <div class="muted" style="margin-bottom:8px;">统一入口：先选业务工具，再调用大模型组织推理回答。</div>
+          <div class="form" style="margin-bottom:10px;">
+            <label class="inline-check"><input id="use-custom-llm" type="checkbox" /> 启用自定义大模型（建议勾选后填写）</label>
+            <div class="grid">
+              <div class="field"><label for="llm-base-url">LLM Base URL</label><input id="llm-base-url" type="text" placeholder="https://api.openai.com/v1" /></div>
+              <div class="field"><label for="llm-model">模型名</label><input id="llm-model" type="text" placeholder="gpt-4o-mini / 其他兼容模型" /></div>
+              <div class="field"><label for="llm-api-key">API Key</label><input id="llm-api-key" type="password" placeholder="sk-..." /></div>
+              <div class="field"><label for="llm-timeout">超时（秒）</label><input id="llm-timeout" type="number" min="5" max="120" value="30" /></div>
+            </div>
+            <div class="tiny">只在当前浏览器保存，用于本次对话请求，不会写入服务器数据库。</div>
+          </div>
           <div class="chat-box" id="chat-box"></div>
-          <div class="tiny" style="margin:10px 0;">支持库存查询、审批状态、空档推荐和异常领用分析。</div>
+          <div class="tiny" style="margin:10px 0;">支持库存查询、审批状态、空档推荐、治理建议与确认执行。</div>
           <div class="field"><label for="chat-input">提问</label><textarea id="chat-input" placeholder="例如：我明天下午想用 3D 打印机，有空档吗？"></textarea></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="button" onclick="sendChat()">发送问题</button><button class="btn-ghost" type="button" onclick="document.getElementById('chat-box').innerHTML=''">清空聊天框</button></div>
         </section>
@@ -149,6 +160,7 @@
 
   <script>
     let currentUser=null,resources=[],transactions=[],approvals=[],alerts=[],sessionId='',poller=null;
+    const llmStorageKey='lab_llm_runtime_config';
     const actionLabels={borrow:'借用',consume:'领用',replenish:'补货',lost:'丢失登记',adjust:'库存调整'};
     const roleCanApply=r=>r==='student'||r==='teacher';
     const roleCanApprove=r=>r==='teacher'||r==='admin';
@@ -188,12 +200,15 @@
     async function returnBorrow(id){const condition=prompt('请输入归还状态：good / damaged / partial_lost','good');if(!condition)return;const note=prompt('可选：补充归还说明','')||'';try{await api(`/transactions/${id}/return`,{method:'PATCH',body:JSON.stringify({condition_return:condition,note})});flash('归还成功，库存已回补。','success');await refreshAll()}catch(err){flash(`归还失败：${err.message}`,'error')}}
     async function saveResource(e){e.preventDefault();const id=document.getElementById('resource-edit-id').value;const payload={name:document.getElementById('resource-name').value.trim(),category:document.getElementById('resource-category').value,subtype:document.getElementById('resource-subtype').value.trim(),location:document.getElementById('resource-location').value.trim(),total_count:Number(document.getElementById('resource-total').value),available_count:Number(document.getElementById('resource-available').value),unit_cost:Number(document.getElementById('resource-unit-cost').value||0),min_threshold:Number(document.getElementById('resource-threshold').value||0),status:document.getElementById('resource-status').value,description:document.getElementById('resource-description').value.trim()};try{if(id){await api(`/resources/${id}`,{method:'PATCH',body:JSON.stringify(payload)});flash('资源信息已更新。','success')}else{await api('/resources',{method:'POST',body:JSON.stringify(payload)});flash('资源已创建。','success')}resetResourceForm();await refreshAll()}catch(err){flash(`资源保存失败：${err.message}`,'error')}}
     async function adjustInventory(e){e.preventDefault();const resourceId=Number(document.getElementById('adjust-resource-id').value);const payload={target_total_count:Number(document.getElementById('adjust-total-count').value),target_available_count:Number(document.getElementById('adjust-available-count').value),reason:document.getElementById('adjust-reason').value.trim()};try{await api(`/resources/${resourceId}/inventory-adjustments`,{method:'POST',body:JSON.stringify(payload)});flash('库存调整已记录，审计字段已更新。','success');document.getElementById('inventory-adjustment-form').reset();await refreshAll()}catch(err){flash(`库存调整失败：${err.message}`,'error')}}
-    async function sendChat(){const input=document.getElementById('chat-input');const msg=input.value.trim();if(!msg)return;appendChat('user',msg);input.value='';try{const data=await api('/agent/chat',{method:'POST',body:JSON.stringify({message:msg,session_id:sessionId||null})});sessionId=data.session_id;appendChat('assistant',data.reply||'当前无法获取回复。')}catch(err){appendChat('assistant',`请求失败：${err.message}`)}}
+    function getLlmOptionsFromUI(){const enabled=document.getElementById('use-custom-llm').checked;const baseUrl=document.getElementById('llm-base-url').value.trim();const model=document.getElementById('llm-model').value.trim();const apiKey=document.getElementById('llm-api-key').value.trim();const timeout=Number(document.getElementById('llm-timeout').value||30);if(!enabled)return null;return{enabled:true,base_url:baseUrl,model,api_key:apiKey,timeout};}
+    function persistLlmOptions(){const payload={enabled:document.getElementById('use-custom-llm').checked,base_url:document.getElementById('llm-base-url').value.trim(),model:document.getElementById('llm-model').value.trim(),api_key:document.getElementById('llm-api-key').value.trim(),timeout:Number(document.getElementById('llm-timeout').value||30)};localStorage.setItem(llmStorageKey,JSON.stringify(payload));}
+    function restoreLlmOptions(){try{const raw=localStorage.getItem(llmStorageKey);if(!raw)return;const cfg=JSON.parse(raw);document.getElementById('use-custom-llm').checked=!!cfg.enabled;document.getElementById('llm-base-url').value=cfg.base_url||'';document.getElementById('llm-model').value=cfg.model||'';document.getElementById('llm-api-key').value=cfg.api_key||'';document.getElementById('llm-timeout').value=cfg.timeout||30;}catch{}}
+    async function sendChat(){const input=document.getElementById('chat-input');const msg=input.value.trim();if(!msg)return;appendChat('user',msg);input.value='';const payload={message:msg,session_id:sessionId||null};const llmOptions=getLlmOptionsFromUI();if(llmOptions){payload.llm_options=llmOptions;}try{const data=await api('/agent/chat',{method:'POST',body:JSON.stringify(payload)});sessionId=data.session_id;appendChat('assistant',data.reply||'当前无法获取回复。');if(llmOptions&&!data.used_model)appendChat('assistant','提示：本次未成功调用大模型，可能是 Base URL / Model / API Key 配置不完整。');}catch(err){appendChat('assistant',`请求失败：${err.message}`)}}
     function appendChat(role,text){const div=document.createElement('div');div.className=`chat-message ${role}`;div.innerText=text;const box=document.getElementById('chat-box');box.appendChild(div);box.scrollTop=box.scrollHeight;}
 
-    function bind(){document.getElementById('tx-action').addEventListener('change',syncApplicationFields);document.getElementById('application-form').addEventListener('submit',submitApplication);document.getElementById('resource-form').addEventListener('submit',saveResource);document.getElementById('inventory-adjustment-form').addEventListener('submit',adjustInventory);document.getElementById('adjust-resource-id').addEventListener('change',e=>syncAdjustForm(e.target.value));document.getElementById('chat-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')sendChat()});}
+    function bind(){document.getElementById('tx-action').addEventListener('change',syncApplicationFields);document.getElementById('application-form').addEventListener('submit',submitApplication);document.getElementById('resource-form').addEventListener('submit',saveResource);document.getElementById('inventory-adjustment-form').addEventListener('submit',adjustInventory);document.getElementById('adjust-resource-id').addEventListener('change',e=>syncAdjustForm(e.target.value));document.getElementById('chat-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')sendChat()});['use-custom-llm','llm-base-url','llm-model','llm-api-key','llm-timeout'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',persistLlmOptions);if(el&&id==='llm-api-key')el.addEventListener('input',persistLlmOptions);});}
     function startPolling(){if(poller)clearInterval(poller);poller=setInterval(()=>refreshAll(false),8000);}
-    async function init(){const token=localStorage.getItem('token');const user=localStorage.getItem('user');if(!token||!user){window.location.href='/login';return;}try{currentUser=JSON.parse(user);syncTopbar();syncRoleSections();bind();syncApplicationFields();appendChat('assistant','可以问我库存、审批、空档推荐或异常领用问题。');await refreshAll();startPolling()}catch{logout()}}
+    async function init(){const token=localStorage.getItem('token');const user=localStorage.getItem('user');if(!token||!user){window.location.href='/login';return;}try{currentUser=JSON.parse(user);syncTopbar();syncRoleSections();bind();restoreLlmOptions();syncApplicationFields();appendChat('assistant','可以问我库存、审批、空档推荐、治理建议；如需模型推理，请先勾选并填写你的 API 配置。');await refreshAll();startPolling()}catch{logout()}}
     window.addEventListener('load',init);
   </script>
 </body>
