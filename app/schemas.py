@@ -1,52 +1,61 @@
-"""Pydantic 请求/响应模型。"""
+"""Pydantic request and response schemas."""
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class UserBase(BaseModel):
-    """用户公共字段。"""
+class ORMBaseModel(BaseModel):
+    """Base schema with ORM parsing enabled."""
 
-    username: str = Field(..., description="用户名")
-    real_name: str = Field(..., description="真实姓名")
-    student_id: str = Field(..., description="学号/工号")
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserCreate(BaseModel):
+    """Public registration payload."""
+
+    username: str = Field(..., description="Username")
+    password: str = Field(..., description="Password")
+    real_name: str = Field(..., description="Real name")
+    student_id: str = Field(..., description="Student or employee id")
     email: Optional[str] = None
-    role: str = Field(default="student", description="角色：student/admin/teacher")
-
-
-class UserCreate(UserBase):
-    """用户注册。"""
-
-    password: str = Field(..., description="密码")
 
 
 class UserLogin(BaseModel):
-    """用户登录。"""
+    """Login payload."""
 
     username: str
     password: str
 
 
-class UserOut(UserBase):
-    """用户响应。"""
+class UserOut(ORMBaseModel):
+    """Serialized user."""
 
     id: int
+    username: str
+    real_name: str
+    student_id: str
+    email: Optional[str]
+    role: str
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+
+class LoginOut(BaseModel):
+    """Login response."""
+
+    token: str
+    user: UserOut
 
 
 class ResourceBase(BaseModel):
-    """资源公共字段。"""
+    """Common resource fields."""
 
-    name: str = Field(..., description="资源名称")
-    category: str = Field(..., description="资源类别：device 或 material")
-    subtype: str = Field(..., description="资源子类：3D打印机、开发板等")
-    location: str = "创新实践基地"
+    name: str
+    category: Literal["device", "material"]
+    subtype: str
+    location: str = "Innovation Lab"
     total_count: int = 1
     available_count: int = 1
     unit_cost: float = 0.0
@@ -56,13 +65,15 @@ class ResourceBase(BaseModel):
 
 
 class ResourceCreate(ResourceBase):
-    """创建资源请求。"""
+    """Create resource payload."""
 
 
 class ResourceUpdate(BaseModel):
-    """更新资源请求，字段全部可选。"""
+    """Update resource payload."""
 
     name: Optional[str] = None
+    category: Optional[Literal["device", "material"]] = None
+    subtype: Optional[str] = None
     location: Optional[str] = None
     total_count: Optional[int] = None
     available_count: Optional[int] = None
@@ -72,59 +83,124 @@ class ResourceUpdate(BaseModel):
     description: Optional[str] = None
 
 
-class ResourceOut(ResourceBase):
-    """资源响应。"""
+class ResourceOut(ORMBaseModel):
+    """Serialized resource."""
 
     id: int
+    name: str
+    category: str
+    subtype: str
+    location: str
+    total_count: int
+    available_count: int
+    unit_cost: float
+    min_threshold: int
+    status: str
+    description: str
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class TransactionCreate(BaseModel):
-    """新建流水请求。"""
+    """Create transaction payload."""
 
     resource_id: int
-    action: str = Field(..., description="borrow/return/consume/replenish/lost")
-    quantity: int = 1
+    action: Literal["borrow", "consume", "replenish", "lost"]
+    quantity: int = Field(default=1, ge=1)
     note: str = ""
-    
-    # 时间维度（借用必填）
     borrow_time: Optional[datetime] = None
     expected_return_time: Optional[datetime] = None
-    
-    # 借还细节
     purpose: str = ""
-    condition_return: str = "完好"
+
+
+class ReturnRequest(BaseModel):
+    """Return a borrowed device."""
+
+    condition_return: Literal["good", "damaged", "partial_lost"] = "good"
+    note: str = ""
+
+
+class InventoryAdjustmentRequest(BaseModel):
+    """Admin direct inventory adjustment payload."""
+
+    target_total_count: int = Field(..., ge=0)
+    target_available_count: int = Field(..., ge=0)
+    reason: str = Field(..., min_length=1)
 
 
 class TransactionOut(BaseModel):
-    """流水响应。"""
+    """Front-end DTO for transaction records."""
 
     id: int
     resource_id: int
+    resource_name: str
+    resource_category: str
     user_id: int
+    requester_name: str
+    requester_role: str
     action: str
     quantity: int
     note: str
-    borrow_time: Optional[datetime]
-    return_time: Optional[datetime]
-    expected_return_time: Optional[datetime]
-    duration_minutes: Optional[int]
     purpose: str
-    condition_return: str
-    is_approved: bool
+    status: str
+    approval_status: str
     approval_id: Optional[int]
+    borrow_time: Optional[datetime]
+    expected_return_time: Optional[datetime]
+    return_time: Optional[datetime]
+    duration_minutes: Optional[int]
+    condition_return: str
+    can_return: bool
+    inventory_applied: bool
+    inventory_before_total: Optional[int]
+    inventory_after_total: Optional[int]
+    inventory_before_available: Optional[int]
+    inventory_after_available: Optional[int]
+    return_inventory_before_available: Optional[int]
+    return_inventory_after_available: Optional[int]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+
+class ApprovalTaskOut(BaseModel):
+    """Front-end DTO for approval cards."""
+
+    id: int
+    transaction_id: int
+    requester_id: int
+    requester_name: str
+    requester_role: str
+    approver_id: Optional[int]
+    approver_name: Optional[str]
+    resource_id: int
+    resource_name: str
+    resource_category: str
+    action: str
+    quantity: int
+    note: str
+    purpose: str
+    status: str
+    reason: str
+    created_at: datetime
+    approved_at: Optional[datetime]
+    can_approve: bool
+    suggestion: str
 
 
-class AlertOut(BaseModel):
-    """预警响应。"""
+class ApprovalTaskApprove(BaseModel):
+    """Approve or reject a task."""
+
+    approved: bool
+    reason: str = ""
+
+
+class MessageOut(BaseModel):
+    """Simple status message."""
+
+    message: str
+
+
+class AlertOut(ORMBaseModel):
+    """Alert DTO."""
 
     id: int
     level: str
@@ -132,218 +208,189 @@ class AlertOut(BaseModel):
     message: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ApprovalTaskOut(BaseModel):
-    """审批任务响应。"""
-
-    id: int
-    transaction_id: int
-    requester_id: int
-    approver_id: Optional[int]
-    status: str
-    reason: str
-    created_at: datetime
-    approved_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
-
-
-class ApprovalTaskApprove(BaseModel):
-    """审批任务审批请求。"""
-
-    approved: bool = Field(..., description="是否批准")
-    reason: str = Field(default="", description="批准或拒绝理由")
-
 
 class AgentAskIn(BaseModel):
-    """智能体问答输入。"""
+    """Single-turn agent request."""
 
-    question: str = Field(..., description="用户自然语言问题")
+    question: str
 
 
 class AgentAskOut(BaseModel):
-    """智能体问答输出。"""
+    """Single-turn agent response."""
 
     intent: str
     answer: str
 
 
 class AgentChatIn(BaseModel):
-    """对话式智能体输入。"""
+    """Chat request."""
 
-    message: str = Field(..., description="用户输入")
-    session_id: Optional[str] = Field(default=None, description="会话 ID，不传则自动创建")
+    message: str
+    session_id: Optional[str] = None
 
 
 class AgentChatOut(BaseModel):
-    """对话式智能体输出。"""
+    """Chat response."""
 
     session_id: str
     reply: str
     used_model: bool
 
 
-class ChatMessageOut(BaseModel):
-    """会话历史消息。"""
+class ChatMessageOut(ORMBaseModel):
+    """Stored chat message."""
 
     role: str
     content: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class EnhancedAgentRequest(BaseModel):
-    """增强版智能体请求。"""
-    
-    question: str = Field(..., description="用户问题")
-    session_id: Optional[str] = Field(default="default", description="会话ID，用于多轮对话")
+    """Enhanced agent payload."""
+
+    question: str
+    session_id: Optional[str] = "default"
 
 
 class EnhancedAgentResponse(BaseModel):
-    """增强版智能体响应。"""
-    
-    session_id: str = Field(..., description="会话ID")
-    answer: str = Field(..., description="智能体回答")
-    success: bool = Field(..., description="是否成功使用LLM")
-    real_time_data: dict = Field(..., description="实时数据上下文")
+    """Enhanced agent response."""
+
+    session_id: str
+    answer: str
+    success: bool
+    real_time_data: dict
 
 
 class SchedulerRequest(BaseModel):
-    """智能调度请求。"""
-    
-    resource_id: int = Field(..., description="资源ID")
-    duration_minutes: int = Field(..., description="使用时长（分钟）")
-    preferred_start: Optional[datetime] = Field(default=None, description="偏好开始时间")
+    """Scheduling request."""
+
+    resource_id: int
+    duration_minutes: int
+    preferred_start: Optional[datetime] = None
 
 
 class TimeSlot(BaseModel):
-    """时段信息。"""
-    
-    start: datetime = Field(..., description="开始时间")
-    end: datetime = Field(..., description="结束时间")
-    day: str = Field(..., description="日期")
-    hour: int = Field(..., description="小时")
-    score: float = Field(..., description="评分（0-100）")
-    conflicts: List[Dict] = Field(default_factory=list, description="冲突信息")
+    """Recommended time slot."""
+
+    start: datetime
+    end: datetime
+    day: str
+    hour: int
+    score: float
+    conflicts: List[Dict] = Field(default_factory=list)
 
 
 class SchedulerResponse(BaseModel):
-    """智能调度响应。"""
-    
-    resource_id: int = Field(..., description="资源ID")
-    duration_minutes: int = Field(..., description="使用时长（分钟）")
-    optimal_slots: List[TimeSlot] = Field(..., description="最优时段推荐")
-    generated_at: datetime = Field(..., description="生成时间")
+    """Scheduling response."""
+
+    resource_id: int
+    duration_minutes: int
+    optimal_slots: List[TimeSlot]
+    generated_at: datetime
 
 
 class DemandPrediction(BaseModel):
-    """需求预测结果。"""
-    
-    date: str = Field(..., description="预测日期")
-    predicted_demand: float = Field(..., description="预测需求")
-    confidence: float = Field(..., description="置信度")
-    recommendation: str = Field(..., description="建议")
+    """Demand forecast item."""
+
+    date: str
+    predicted_demand: float
+    confidence: float
+    recommendation: str
 
 
 class DemandPredictionResponse(BaseModel):
-    """需求预测响应。"""
-    
-    resource_id: int = Field(..., description="资源ID")
-    days_ahead: int = Field(..., description="预测天数")
-    predictions: List[DemandPrediction] = Field(..., description="预测结果")
-    generated_at: datetime = Field(..., description="生成时间")
+    """Demand forecast response."""
+
+    resource_id: int
+    days_ahead: int
+    predictions: List[DemandPrediction]
+    generated_at: datetime
 
 
 class OptimizationRecommendation(BaseModel):
-    """优化建议。"""
-    
-    resource_id: int = Field(..., description="资源ID")
-    resource_name: str = Field(..., description="资源名称")
-    utilization: float = Field(..., description="利用率")
-    recommendation: str = Field(..., description="优化建议")
-    priority: str = Field(..., description="优先级")
+    """Optimization recommendation."""
+
+    resource_id: int
+    resource_name: str
+    utilization: float
+    recommendation: str
+    priority: str
 
 
 class OptimizationResponse(BaseModel):
-    """资源优化响应。"""
-    
-    total_devices: int = Field(..., description="设备总数")
-    recommendations: List[OptimizationRecommendation] = Field(..., description="优化建议")
-    generated_at: datetime = Field(..., description="生成时间")
+    """Resource optimization response."""
+
+    total_devices: int
+    recommendations: List[OptimizationRecommendation]
+    generated_at: datetime
 
 
 class PeriodInfo(BaseModel):
-    """分析时间段信息。"""
-    
-    start_date: str = Field(..., description="开始日期")
-    end_date: str = Field(..., description="结束日期")
-    days: int = Field(..., description="天数")
+    """Analytics period metadata."""
+
+    start_date: str
+    end_date: str
+    days: int
 
 
 class SummaryStats(BaseModel):
-    """基础统计信息。"""
-    
-    total_transactions: int = Field(..., description="总交易量")
-    active_users: int = Field(..., description="活跃用户数")
-    average_device_utilization: float = Field(..., description="平均设备利用率")
-    material_consumption: int = Field(..., description="物料消耗量")
-    daily_avg_transactions: float = Field(..., description="日均交易量")
+    """Analytics summary."""
+
+    total_transactions: int
+    active_users: int
+    average_device_utilization: float
+    material_consumption: int
+    daily_avg_transactions: float
 
 
 class ResourceUsageAnalysis(BaseModel):
-    """资源使用分析。"""
-    
-    popular_resources: List[Dict] = Field(..., description="热门资源")
-    high_utilization_devices: List[Dict] = Field(..., description="高利用率设备")
-    analysis_period: str = Field(..., description="分析周期")
+    """Resource analytics."""
+
+    popular_resources: List[Dict]
+    high_utilization_devices: List[Dict]
+    analysis_period: str
 
 
 class UserBehaviorAnalysis(BaseModel):
-    """用户行为分析。"""
-    
-    top_users: List[Dict] = Field(..., description="活跃用户排行榜")
-    user_patterns: List[Dict] = Field(..., description="用户行为模式")
+    """User analytics."""
+
+    top_users: List[Dict]
+    user_patterns: List[Dict]
 
 
 class CostAnalysis(BaseModel):
-    """成本分析。"""
-    
-    total_cost: float = Field(..., description="总成本")
-    daily_avg_cost: float = Field(..., description="日均成本")
-    cost_breakdown: List[Dict] = Field(..., description="成本明细")
-    high_cost_items: List[Dict] = Field(..., description="高成本项目")
+    """Cost analytics."""
+
+    total_cost: float
+    daily_avg_cost: float
+    cost_breakdown: List[Dict]
+    high_cost_items: List[Dict]
 
 
 class TrendAnalysis(BaseModel):
-    """趋势分析。"""
-    
-    daily_usage: List[Dict] = Field(..., description="日使用趋势")
-    resource_category_trends: List[Dict] = Field(..., description="资源类别趋势")
+    """Trend analytics."""
+
+    daily_usage: List[Dict]
+    resource_category_trends: List[Dict]
 
 
 class AnalyticsRecommendation(BaseModel):
-    """分析建议。"""
-    
-    type: str = Field(..., description="建议类型")
-    resource_id: int = Field(..., description="资源ID")
-    resource_name: str = Field(..., description="资源名称")
-    message: str = Field(..., description="建议内容")
-    priority: str = Field(..., description="优先级")
+    """Analytics recommendation."""
+
+    type: str
+    resource_id: int
+    resource_name: str
+    message: str
+    priority: str
 
 
 class AnalyticsResponse(BaseModel):
-    """综合数据分析响应。"""
-    
-    period: PeriodInfo = Field(..., description="分析周期")
-    summary: SummaryStats = Field(..., description="基础统计")
-    resource_analysis: ResourceUsageAnalysis = Field(..., description="资源使用分析")
-    user_behavior: UserBehaviorAnalysis = Field(..., description="用户行为分析")
-    cost_analysis: CostAnalysis = Field(..., description="成本分析")
-    trends: TrendAnalysis = Field(..., description="趋势分析")
-    recommendations: List[AnalyticsRecommendation] = Field(..., description="优化建议")
+    """Composite analytics response."""
+
+    period: PeriodInfo
+    summary: SummaryStats
+    resource_analysis: ResourceUsageAnalysis
+    user_behavior: UserBehaviorAnalysis
+    cost_analysis: CostAnalysis
+    trends: TrendAnalysis
+    recommendations: List[AnalyticsRecommendation]

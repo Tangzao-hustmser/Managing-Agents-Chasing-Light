@@ -1,4 +1,4 @@
-"""FastAPI 启动入口。"""
+"""FastAPI application entry point."""
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
@@ -6,21 +6,17 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import Base, engine, get_db
-from app.routers import agent, alerts, analytics, approvals, auth, files, resources, transactions
+from app.database import ensure_database_schema, get_db
+from app.routers import agent, alerts, analytics, approvals, auth, files, resources, scheduler, transactions
 from app.schemas import AgentAskIn, AgentAskOut, AgentChatIn, AgentChatOut
 from app.services.agent_service import ask_agent
 from app.services.llm_service import chat_with_agent, check_llm_connectivity
 
-# 应用启动时自动建表，便于快速演示和比赛答辩。
-Base.metadata.create_all(bind=engine)
+ensure_database_schema()
 
-app = FastAPI(title=settings.app_name, version="1.0.0")
-
-# 挂载静态目录，用于管理面板页面资源访问。
+app = FastAPI(title=settings.app_name, version="1.1.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# 注册业务路由模块。
 app.include_router(auth.router)
 app.include_router(resources.router)
 app.include_router(transactions.router)
@@ -29,47 +25,46 @@ app.include_router(approvals.router)
 app.include_router(files.router)
 app.include_router(analytics.router)
 app.include_router(agent.router)
+app.include_router(scheduler.router)
 
 
-@app.get("/", tags=["系统"])
+@app.get("/", tags=["system"])
 def health_check():
-    """健康检查接口。"""
+    """Basic health check."""
     return {"name": settings.app_name, "status": "ok", "env": settings.app_env}
 
 
-@app.get("/login", tags=["系统"])
+@app.get("/login", tags=["system"])
 def login_page():
-    """返回登录页面。"""
+    """Return the login page."""
     return FileResponse("app/static/login.html")
 
 
-@app.get("/dashboard", tags=["系统"])
+@app.get("/dashboard", tags=["system"])
 def dashboard_page():
-    """返回原始演示面板（无认证）。"""
+    """Return the legacy demo page."""
     return FileResponse("app/static/dashboard.html")
 
 
-@app.get("/dashboard-main", tags=["系统"])
+@app.get("/dashboard-main", tags=["system"])
 def dashboard_main_page():
-    """返回认证版仪表板。"""
+    """Return the authenticated dashboard."""
     return FileResponse("app/static/dashboard-main.html")
 
 
-@app.post("/agent/ask", response_model=AgentAskOut, tags=["智能体"])
+@app.post("/agent/ask", response_model=AgentAskOut, tags=["agent"])
 def agent_ask(payload: AgentAskIn, db: Session = Depends(get_db)):
-    """智能体问答接口：将自然语言请求转为管理洞察。"""
-    result = ask_agent(db, payload.question)
-    return AgentAskOut(**result)
+    """Single-turn deterministic agent endpoint."""
+    return AgentAskOut(**ask_agent(db, payload.question))
 
 
-@app.post("/agent/chat", response_model=AgentChatOut, tags=["智能体"])
+@app.post("/agent/chat", response_model=AgentChatOut, tags=["agent"])
 def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db)):
-    """对话式智能体接口：支持多轮会话和上下文记忆。"""
-    result = chat_with_agent(db, payload.message, payload.session_id)
-    return AgentChatOut(**result)
+    """Chat endpoint backed by business tools and optional LLM summarization."""
+    return AgentChatOut(**chat_with_agent(db, payload.message, payload.session_id))
 
 
-@app.get("/debug/llm-check", tags=["系统诊断"])
+@app.get("/debug/llm-check", tags=["diagnostics"])
 def debug_llm_check():
-    """一键诊断大模型连通性（不返回明文 Key）。"""
+    """Probe the configured LLM endpoint."""
     return check_llm_connectivity()

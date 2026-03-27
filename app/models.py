@@ -1,4 +1,4 @@
-"""数据库 ORM 模型定义。"""
+"""SQLAlchemy ORM models."""
 
 from datetime import datetime
 
@@ -9,15 +9,15 @@ from app.database import Base
 
 
 class Resource(Base):
-    """共享资源模型：既可表示设备，也可表示物料。"""
+    """Shared devices and consumables."""
 
     __tablename__ = "resources"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(120), nullable=False, index=True)
     category = Column(String(50), nullable=False, index=True)  # device/material
-    subtype = Column(String(80), nullable=False)  # 3D打印机/开发板等
-    location = Column(String(120), default="创新实践基地")
+    subtype = Column(String(80), nullable=False)
+    location = Column(String(120), default="Innovation Lab")
     total_count = Column(Integer, default=1)
     available_count = Column(Integer, default=1)
     unit_cost = Column(Float, default=0.0)
@@ -31,62 +31,78 @@ class Resource(Base):
 
 
 class User(Base):
-    """用户模型：支持多角色（学生、管理员、教师）。"""
+    """System user."""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(80), unique=True, nullable=False, index=True)
-    password = Column(String(255), nullable=False)  # 明文存储（演示用）
+    password = Column(String(255), nullable=False)
     real_name = Column(String(100), nullable=False)
-    student_id = Column(String(20), nullable=False, index=True)  # 学号/工号
+    student_id = Column(String(20), nullable=False, index=True)
     email = Column(String(100))
-    role = Column(String(20), default="student")  # student/admin/teacher
+    role = Column(String(20), default="student")  # student/teacher/admin
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="user")
-    approval_tasks_requested = relationship("ApprovalTask", foreign_keys="ApprovalTask.requester_id", back_populates="requester")
-    approval_tasks_approved = relationship("ApprovalTask", foreign_keys="ApprovalTask.approver_id", back_populates="approver")
+    approval_tasks_requested = relationship(
+        "ApprovalTask",
+        foreign_keys="ApprovalTask.requester_id",
+        back_populates="requester",
+    )
+    approval_tasks_approved = relationship(
+        "ApprovalTask",
+        foreign_keys="ApprovalTask.approver_id",
+        back_populates="approver",
+    )
 
 
 class Transaction(Base):
-    """借还/领用流水，用于追踪占用不均、丢失和浪费风险。"""
+    """Lifecycle record for applications, inventory changes, and returns."""
 
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
     resource_id = Column(ForeignKey("resources.id"), nullable=False, index=True)
-    user_id = Column(ForeignKey("users.id"), nullable=False, index=True)  # 操作用户
-    action = Column(String(30), nullable=False)  # borrow/return/consume/replenish/lost
+    user_id = Column(ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String(30), nullable=False)  # borrow/consume/replenish/lost/adjust
     quantity = Column(Integer, default=1)
     note = Column(Text, default="")
-    
-    # 时间维度
-    borrow_time = Column(DateTime, nullable=True)  # 借用开始时间（设备类必填）
-    return_time = Column(DateTime, nullable=True)  # 实际归还时间
-    expected_return_time = Column(DateTime, nullable=True)  # 预期归还时间
-    duration_minutes = Column(Integer, nullable=True)  # 借用时长（分钟）
-    
-    # 借还细节
-    purpose = Column(String(200), default="")  # 使用目的
-    condition_return = Column(String(30), default="完好")  # 归还状态：完好/损坏/部分丢失
-    
-    # 审批流程
-    # 注：审批任务通过 ApprovalTask.transaction_id 关联，不需要反向外键
-    is_approved = Column(Boolean, default=False)  # 是否已批准
-    
+
+    borrow_time = Column(DateTime, nullable=True)
+    return_time = Column(DateTime, nullable=True)
+    expected_return_time = Column(DateTime, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+
+    purpose = Column(String(200), default="")
+    condition_return = Column(String(30), default="good")
+
+    is_approved = Column(Boolean, default=False)
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    inventory_applied = Column(Boolean, default=False, nullable=False)
+    inventory_before_total = Column(Integer, nullable=True)
+    inventory_after_total = Column(Integer, nullable=True)
+    inventory_before_available = Column(Integer, nullable=True)
+    inventory_after_available = Column(Integer, nullable=True)
+    return_inventory_before_available = Column(Integer, nullable=True)
+    return_inventory_after_available = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     resource = relationship("Resource", back_populates="transactions")
     user = relationship("User", back_populates="transactions")
-    # 反向关系：通过 ApprovalTask.transaction_id 查询
-    approval_task = relationship("ApprovalTask", back_populates="transaction", uselist=False, foreign_keys="ApprovalTask.transaction_id")
+    approval_task = relationship(
+        "ApprovalTask",
+        back_populates="transaction",
+        uselist=False,
+        foreign_keys="ApprovalTask.transaction_id",
+    )
 
 
 class Alert(Base):
-    """系统预警：库存不足、设备占用不均、疑似浪费等。"""
+    """System alert."""
 
     __tablename__ = "alerts"
 
@@ -98,16 +114,16 @@ class Alert(Base):
 
 
 class ApprovalTask(Base):
-    """审批任务：高风险操作（大额消耗、丢失、补货）需要管理员审批。"""
+    """Approval record for a pending application."""
 
     __tablename__ = "approval_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
     transaction_id = Column(ForeignKey("transactions.id"), nullable=False, index=True)
-    requester_id = Column(ForeignKey("users.id"), nullable=False, index=True)  # 申请人
-    approver_id = Column(ForeignKey("users.id"), nullable=True)  # 审批人
+    requester_id = Column(ForeignKey("users.id"), nullable=False, index=True)
+    approver_id = Column(ForeignKey("users.id"), nullable=True)
     status = Column(String(20), default="pending")  # pending/approved/rejected
-    reason = Column(Text, default="")  # 审批理由或拒绝原因
+    reason = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     approved_at = Column(DateTime, nullable=True)
 
@@ -117,7 +133,7 @@ class ApprovalTask(Base):
 
 
 class ChatMessage(Base):
-    """多轮对话消息模型，用于保存每个会话上下文。"""
+    """Stored chat history for the agent assistant."""
 
     __tablename__ = "chat_messages"
 

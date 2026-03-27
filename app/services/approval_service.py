@@ -1,76 +1,82 @@
-"""审批流程服务：高风险操作的审批管理。"""
+"""Approval workflow helpers."""
 
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from app.models import ApprovalTask, Resource, Transaction, User
+from app.models import ApprovalTask, Transaction, User
+from app.services.transaction_service import action_requires_approval, apply_inventory_change
 
 
-def should_require_approval(action: str, quantity: int, resource: Resource) -> Tuple[bool, str]:
-    """
-    判断是否需要审批。
-    
-    返回 (需要审批: bool, 原因: str)
-    """
-    if action == "lost":
-        return True, f"设备丢失，数量 {quantity}"
-    
-    if action == "consume" and quantity >= 10:
-        return True, f"大额消耗，数量 {quantity}"
-    
-    if action == "replenish":
-        return True, f"补货操作，数量 {quantity}"
-    
-    return False, ""
+def should_require_approval(action: str) -> bool:
+    """Return True if the action must enter the approval queue."""
+    return action_requires_approval(action)
 
 
 def create_approval_task(
     db: Session,
     transaction: Transaction,
     requester: User,
-    reason: str
+    reason: str = "",
 ) -> ApprovalTask:
-    """创建审批任务。"""
+    """Create a pending approval task without committing."""
     task = ApprovalTask(
         transaction_id=transaction.id,
         requester_id=requester.id,
         status="pending",
-        reason=reason
+        reason=reason,
     )
     db.add(task)
-    db.commit()
-    db.refresh(task)
+    db.flush()
     return task
 
 
-def get_pending_approvals(db: Session, limit: int = 50) -> List[ApprovalTask]:
-    """获取待审批任务。"""
-    return db.query(ApprovalTask).filter(
-        ApprovalTask.status == "pending"
-    ).order_by(ApprovalTask.created_at.desc()).limit(limit).all()
+def _approval_query(db: Session):
+    return db.query(ApprovalTask).options(
+        joinedload(ApprovalTask.transaction).joinedload(Transaction.resource),
+        joinedload(ApprovalTask.transaction).joinedload(Transaction.user),
+        joinedload(ApprovalTask.requester),
+        joinedload(ApprovalTask.approver),
+    )
+
+
+def get_pending_approvals(
+    db: Session,
+    limit: int = 50,
+    requester_id: Optional[int] = None,
+) -> List[ApprovalTask]:
+    """Return pending approvals, optionally scoped to one requester."""
+    query = _approval_query(db).filter(ApprovalTask.status == "pending")
+    if requester_id is not None:
+        query = query.filter(ApprovalTask.requester_id == requester_id)
+    return query.order_by(ApprovalTask.created_at.desc()).limit(limit).all()
 
 
 def approve_task(
     db: Session,
     task: ApprovalTask,
     approver: User,
-    reason: str = ""
+    reason: str = "",
 ) -> ApprovalTask:
-    """批准审批任务。"""
+    """Approve a task and apply the inventory effect."""
+    if task.status != "pending":
+        raise ValueError("This approval task has already been handled")
+    if task.requester_id == approver.id:
+        raise ValueError("You cannot approve your own request")
+
+    tx = task.transaction
+    if not tx:
+        raise ValueError("The linked transaction does not exist")
+
     task.status = "approved"
     task.approver_id = approver.id
     task.approved_at = datetime.utcnow()
-    task.reason = reason
-    
-    # 关联的 transaction 标记为已批准
-    tx = db.query(Transaction).filter(Transaction.id == task.transaction_id).first()
-    if tx:
-        tx.is_approved = True
-    
-    db.commit()
-    db.refresh(task)
+    task.reason = reason or task.reason
+
+    tx.status = "approved"
+    tx.is_approved = True
+    apply_inventory_change(db, tx)
     return task
 
 
@@ -78,22 +84,28 @@ def reject_task(
     db: Session,
     task: ApprovalTask,
     approver: User,
-    reason: str
+    reason: str,
 ) -> ApprovalTask:
-    """拒绝审批任务。"""
+    """Reject a task without touching inventory."""
+    if task.status != "pending":
+        raise ValueError("This approval task has already been handled")
+    if task.requester_id == approver.id:
+        raise ValueError("You cannot approve your own request")
+
+    tx = task.transaction
+    if not tx:
+        raise ValueError("The linked transaction does not exist")
+
     task.status = "rejected"
     task.approver_id = approver.id
     task.approved_at = datetime.utcnow()
-    task.reason = reason
-    
-    # 关联的 transaction 保持未批准状态，但删除库存扣减（如果有）
-    # 这里暂时不删除，由前端逻辑处理
-    
-    db.commit()
-    db.refresh(task)
+    task.reason = reason or task.reason
+
+    tx.status = "rejected"
+    tx.is_approved = False
     return task
 
 
-def get_approval_by_id(db: Session, approval_id: int) -> ApprovalTask:
-    """根据 ID 获取审批任务。"""
-    return db.query(ApprovalTask).filter(ApprovalTask.id == approval_id).first()
+def get_approval_by_id(db: Session, approval_id: int) -> Optional[ApprovalTask]:
+    """Fetch one approval task with all display relations loaded."""
+    return _approval_query(db).filter(ApprovalTask.id == approval_id).first()

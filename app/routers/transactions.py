@@ -1,178 +1,194 @@
-"""借还/领用流水路由。"""
-
-from datetime import datetime
+"""Transaction routes."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Resource, Transaction, User
 from app.routers.auth import get_current_user
-from app.schemas import TransactionCreate, TransactionOut
+from app.schemas import ReturnRequest, TransactionCreate, TransactionOut
 from app.services.approval_service import create_approval_task, should_require_approval
-from app.services.rules_engine import run_inventory_rules, run_utilization_rules, run_waste_rules
-from app.services.time_slot_service import calculate_duration, check_time_slot_conflict
+from app.services.auth_service import is_admin, is_teacher_or_admin
+from app.services.time_slot_service import check_time_slot_conflict
+from app.services.transaction_service import (
+    apply_inventory_change,
+    apply_return,
+    build_transaction_out,
+    validate_resource_action,
+)
 
-router = APIRouter(prefix="/transactions", tags=["借还与领用"])
+router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _transaction_query(db: Session):
+    return db.query(Transaction).options(
+        joinedload(Transaction.resource),
+        joinedload(Transaction.user),
+        joinedload(Transaction.approval_task),
+    )
 
 
 @router.post("", response_model=TransactionOut)
 def create_transaction(
     payload: TransactionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """记录一次借还或领用行为，并同步更新库存/可用量。"""
+    """Create a new application or a direct staff/admin transaction."""
     resource = db.query(Resource).filter(Resource.id == payload.resource_id).first()
     if not resource:
-        raise HTTPException(status_code=404, detail="资源不存在")
-
-    # 时段检测：设备类资源的 borrow 动作需要检查冲突
-    if payload.action == "borrow" and resource.category == "device":
-        if not payload.borrow_time or not payload.expected_return_time:
-            raise HTTPException(status_code=400, detail="设备借用需要提供 borrow_time 和 expected_return_time")
-        
-        conflicts = check_time_slot_conflict(
-            db,
-            payload.resource_id,
-            payload.borrow_time,
-            payload.expected_return_time
-        )
-        if conflicts:
-            conflict_info = "; ".join([f"ID#{c.id} 用户{c.user_id}" for c in conflicts])
-            raise HTTPException(
-                status_code=400,
-                detail=f"时段冲突：{conflict_info}"
-            )
-
-    # 库存检查（只检查，不更新）
-    if payload.action in ("borrow", "consume", "lost"):
-        if resource.available_count < payload.quantity:
-            raise HTTPException(status_code=400, detail="可用数量不足")
-    elif payload.action in ("return", "replenish"):
-        # 归还和补货不需要检查库存限制
-        pass
-    else:
-        raise HTTPException(status_code=400, detail="不支持的 action")
-
-    # 创建 transaction 对象
-    tx = Transaction(
-        resource_id=payload.resource_id,
-        user_id=current_user.id,
-        action=payload.action,
-        quantity=payload.quantity,
-        note=payload.note,
-        borrow_time=payload.borrow_time,
-        expected_return_time=payload.expected_return_time,
-        purpose=payload.purpose,
-        condition_return=payload.condition_return
-    )
-    
-    # 检查是否需要审批
-    require_approval, reason = should_require_approval(payload.action, payload.quantity, resource)
-    
-    if require_approval:
-        tx.is_approved = False
-        db.add(tx)
-        db.flush()  # 获取 tx.id
-        approval_task = create_approval_task(db, tx, current_user, reason)
-        tx.approval_id = approval_task.id
-    else:
-        tx.is_approved = True
-        # 只有审批通过的事务才更新库存
-        if payload.action in ("borrow", "consume", "lost"):
-            resource.available_count -= payload.quantity
-        elif payload.action in ("return", "replenish"):
-            resource.available_count += payload.quantity
-            if resource.available_count > resource.total_count:
-                if resource.category == "material":
-                    resource.total_count = resource.available_count
-                else:
-                    resource.available_count = resource.total_count
+        raise HTTPException(status_code=404, detail="Resource not found")
 
     try:
-        db.add(tx)
-        run_inventory_rules(db, resource)
-        run_utilization_rules(db, resource)
-        run_waste_rules(db, resource, payload.action, payload.quantity)
+        if payload.action in {"borrow", "consume"}:
+            if current_user.role not in {"student", "teacher"}:
+                raise HTTPException(status_code=403, detail="Admins do not submit resource applications")
+            validate_resource_action(resource, payload.action)
+
+            if payload.action == "borrow":
+                if not payload.borrow_time or not payload.expected_return_time:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Borrow requests must include borrow_time and expected_return_time",
+                    )
+                conflicts = check_time_slot_conflict(
+                    db,
+                    payload.resource_id,
+                    payload.borrow_time,
+                    payload.expected_return_time,
+                )
+                if conflicts:
+                    raise HTTPException(status_code=400, detail="The requested time slot conflicts with an approved borrow")
+
+            tx = Transaction(
+                resource_id=payload.resource_id,
+                user_id=current_user.id,
+                action=payload.action,
+                quantity=payload.quantity,
+                note=payload.note,
+                borrow_time=payload.borrow_time,
+                expected_return_time=payload.expected_return_time,
+                purpose=payload.purpose,
+                status="pending",
+                is_approved=False,
+                inventory_applied=False,
+            )
+            db.add(tx)
+            db.flush()
+
+            if should_require_approval(payload.action):
+                create_approval_task(
+                    db,
+                    tx,
+                    current_user,
+                    reason="Awaiting teacher/admin approval",
+                )
+
+        elif payload.action == "replenish":
+            if not is_admin(current_user):
+                raise HTTPException(status_code=403, detail="Only admins can replenish inventory directly")
+            tx = Transaction(
+                resource_id=payload.resource_id,
+                user_id=current_user.id,
+                action=payload.action,
+                quantity=payload.quantity,
+                note=payload.note,
+                purpose=payload.purpose or "admin replenish",
+                status="approved",
+                is_approved=True,
+            )
+            db.add(tx)
+            db.flush()
+            tx.resource = resource
+            apply_inventory_change(db, tx)
+
+        elif payload.action == "lost":
+            if not is_teacher_or_admin(current_user):
+                raise HTTPException(status_code=403, detail="Only teachers or admins can register loss")
+            if not payload.note.strip():
+                raise HTTPException(status_code=400, detail="Loss registration must include a reason")
+            tx = Transaction(
+                resource_id=payload.resource_id,
+                user_id=current_user.id,
+                action=payload.action,
+                quantity=payload.quantity,
+                note=payload.note,
+                purpose=payload.purpose or "loss registration",
+                status="approved",
+                is_approved=True,
+            )
+            db.add(tx)
+            db.flush()
+            tx.resource = resource
+            apply_inventory_change(db, tx)
+
+        else:
+            raise HTTPException(status_code=400, detail="Use PATCH /transactions/{id}/return for returns")
+
         db.commit()
-        db.refresh(tx)
-        return tx
-    except Exception as e:
+        tx = _transaction_query(db).filter(Transaction.id == tx.id).first()
+        return build_transaction_out(tx, current_user)
+    except HTTPException:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"数据库操作失败: {str(e)}")
+        raise
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create transaction: {exc}") from exc
 
 
 @router.get("", response_model=list[TransactionOut])
 def list_transactions(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """查询流水记录。
-    
-    学生仅能查看自己的流水，管理员可以查看全部。
-    """
-    if current_user.role == "admin":
-        txs = db.query(Transaction).order_by(Transaction.id.desc()).all()
-    else:
-        txs = db.query(Transaction).filter(Transaction.user_id == current_user.id).order_by(Transaction.id.desc()).all()
-    
-    return txs
+    """List transactions for the current role."""
+    query = _transaction_query(db).order_by(Transaction.id.desc())
+    if not is_admin(current_user):
+        query = query.filter(Transaction.user_id == current_user.id)
+    transactions = query.all()
+    return [build_transaction_out(tx, current_user) for tx in transactions]
 
 
 @router.get("/{transaction_id}", response_model=TransactionOut)
 def get_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """获取单条流水详情。"""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    """Get one transaction detail."""
+    tx = _transaction_query(db).filter(Transaction.id == transaction_id).first()
     if not tx:
-        raise HTTPException(status_code=404, detail="流水不存在")
-    
-    # 权限检查
-    if current_user.role != "admin" and tx.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权访问他人的流水")
-    
-    return tx
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if not is_admin(current_user) and tx.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You cannot access another user's transaction")
+    return build_transaction_out(tx, current_user)
 
 
-@router.patch("/{transaction_id}/return")
+@router.patch("/{transaction_id}/return", response_model=TransactionOut)
 def return_resource(
     transaction_id: int,
-    payload: dict,
+    payload: ReturnRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """归还资源：填充 return_time 和 condition_return。"""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    """Return one approved borrow record owned by the current user."""
+    tx = _transaction_query(db).filter(Transaction.id == transaction_id).first()
     if not tx:
-        raise HTTPException(status_code=404, detail="流水不存在")
-    
-    if tx.action != "borrow":
-        raise HTTPException(status_code=400, detail="仅借用类流水可以归还")
-    
-    if tx.return_time is not None:
-        raise HTTPException(status_code=400, detail="该资源已归还")
-    
-    # 权限检查
-    if current_user.role != "admin" and tx.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权归还他人的资源")
-    
-    # 更新归还信息
-    tx.return_time = datetime.utcnow()
-    tx.condition_return = payload.get("condition_return", "完好")
-    
-    if tx.borrow_time:
-        tx.duration_minutes = calculate_duration(tx.borrow_time, tx.return_time)
-    
-    db.commit()
-    db.refresh(tx)
-    
-    return {
-        "id": tx.id,
-        "return_time": tx.return_time,
-        "duration_minutes": tx.duration_minutes,
-        "condition_return": tx.condition_return
-    }
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only return your own borrowed device")
+
+    try:
+        apply_return(db, tx, payload.condition_return, payload.note)
+        db.commit()
+        tx = _transaction_query(db).filter(Transaction.id == transaction_id).first()
+        return build_transaction_out(tx, current_user)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to return resource: {exc}") from exc

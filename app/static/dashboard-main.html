@@ -3,771 +3,198 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>创新实践基地智能管理面板</title>
+  <title>资源管理工作台</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: "Microsoft YaHei", Arial, sans-serif;
-      background: #f5f7fb;
-      color: #1f2937;
-    }
-    
-    .navbar {
-      background: white;
-      border-bottom: 1px solid #e5e7eb;
-      padding: 12px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-    
-    .navbar h1 {
-      font-size: 18px;
-      margin: 0;
-    }
-    
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    
-    .user-badge {
-      background: #f3f4f6;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-      color: #374151;
-    }
-    
-    .role-badge {
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-    
-    .role-badge.admin {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-    
-    .role-badge.student {
-      background: #dbeafe;
-      color: #1e40af;
-    }
-    
-    .role-badge.teacher {
-      background: #dbeafe;
-      color: #1e40af;
-    }
-    
-    .btn-logout {
-      background: #ef4444;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: all 0.2s;
-    }
-    
-    .btn-logout:hover {
-      background: #dc2626;
-    }
-    
-    .container {
-      max-width: 1200px;
-      margin: 20px auto;
-      padding: 0 16px 24px;
-    }
-    
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-    
-    .header h2 {
-      font-size: 20px;
-    }
-    
-    .status-badge {
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #dcfce7;
-      color: #166534;
-      border: 1px solid #86efac;
-    }
-    
-    .grid-4 {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    
-    .card {
-      background: white;
-      border-radius: 8px;
-      padding: 16px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-    
-    .metric-label {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 8px;
-    }
-    
-    .metric-value {
-      font-size: 28px;
-      font-weight: 600;
-      color: #667eea;
-    }
-    
-    .section-title {
-      font-size: 16px;
-      margin: 0 0 12px;
-      color: #1f2937;
-      border-bottom: 2px solid #667eea;
-      padding-bottom: 8px;
-    }
-    
-    .layout {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-    
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    
-    th {
-      background: #f9fafb;
-      padding: 8px;
-      text-align: left;
-      font-weight: 600;
-      color: #374151;
-      border-bottom: 2px solid #e5e7eb;
-    }
-    
-    td {
-      padding: 8px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    
-    tr:hover {
-      background: #f9fafb;
-    }
-    
-    .btn {
-      background: #667eea;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: all 0.2s;
-    }
-    
-    .btn:hover {
-      background: #5a67d8;
-    }
-    
-    input, select, textarea {
-      width: 100%;
-      padding: 8px 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 13px;
-      margin-bottom: 8px;
-    }
-    
-    textarea { min-height: 80px; }
-    
-    .row {
-      display: flex;
-      gap: 8px;
-    }
-    
-    .row > * {
-      flex: 1;
-    }
-    
-    .chat-box {
-      height: 200px;
-      overflow-y: auto;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    
-    .message {
-      margin-bottom: 10px;
-      padding: 8px;
-      border-radius: 4px;
-    }
-    
-    .message.user {
-      background: #dbeafe;
-      text-align: right;
-    }
-    
-    .message.ai {
-      background: #f3f4f6;
-    }
-    
-    .alert-item {
-      border-left: 4px solid #f59e0b;
-      background: #fffbeb;
-      border-radius: 4px;
-      padding: 8px 10px;
-      margin-bottom: 8px;
-      font-size: 12px;
-    }
-    
-    .hidden { display: none; }
-    
-    @media (max-width: 980px) {
-      .grid-4 { grid-template-columns: 1fr 1fr; }
-      .layout { grid-template-columns: 1fr; }
-      .navbar { flex-direction: column; gap: 12px; }
-    }
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:"Microsoft YaHei",Arial,sans-serif;background:#f3f7fa;color:#183447}
+    .topbar,.card{background:#fff;border:1px solid #d8e5ec;box-shadow:0 10px 24px rgba(24,52,71,.06)}
+    .topbar{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px}
+    .page{width:min(1360px,calc(100% - 24px));margin:16px auto 28px}.muted{color:#617987;font-size:13px}.hidden{display:none!important}
+    .actions,.row,.grid,.stats,.two-col,.approval-list{display:grid;gap:12px}.stats{grid-template-columns:repeat(4,1fr);margin-bottom:16px}
+    .stat{padding:16px 18px;border-radius:18px;background:#fff;border:1px solid #d8e5ec}.stat .label{font-size:13px;color:#617987}.stat .value{font-size:30px;font-weight:700;color:#0f4c81}
+    .two-col{grid-template-columns:1.18fr .82fr}.card{border-radius:20px;padding:16px 18px}.card h2{font-size:18px;margin-bottom:4px}.stack{display:grid;gap:16px}
+    .flash-list{display:grid;gap:8px;margin-bottom:14px}.flash{padding:12px 14px;border-radius:14px;background:#fff;border-left:5px solid #0f4c81}
+    .flash.success{border-left-color:#1f7a56}.flash.error{border-left-color:#c53030}.pill{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#edf4f8;font-size:13px}
+    .student{background:#e8f0ff;color:#2453a6}.teacher{background:#edf8f7;color:#1b6a66}.admin{background:#fff0ec;color:#9c4329}
+    button{border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer}.btn-primary{color:#fff;background:linear-gradient(135deg,#0f4c81,#0d7c77)}.btn-ghost{background:#edf4f8;color:#244458}.btn-danger{background:#f9e3e3;color:#c53030}
+    .form{display:grid;gap:12px}.grid{grid-template-columns:repeat(2,1fr)}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-size:13px;font-weight:600}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid #cfe0ea;border-radius:10px;background:#fbfdff;font-size:14px}textarea{min-height:88px}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid #e5eef2;vertical-align:top}th{font-size:12px;color:#617987;text-transform:uppercase;background:#f7fbfc}
+    .table-wrap{overflow:auto}.badge{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#edf4f8}.pending{background:#fff5db;color:#b7791f}.approved,.returned{background:#e8f8f1;color:#1f7a56}.rejected{background:#fdeaea;color:#c53030}.not_required{background:#edf4f8;color:#37576c}
+    .approval-item,.alert-item,.chat-message{border:1px solid #d8e5ec;border-radius:14px;padding:12px 14px;background:#fff}.approval-item .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:13px;margin:8px 0}.suggestion{background:#eef8f7;border-radius:12px;padding:10px 12px;font-size:13px;margin:8px 0;line-height:1.7}
+    .alert-item{border-left:5px solid #b7791f;background:#fff9ee}.alert-item.error{border-left-color:#c53030;background:#fff1f1}.chat-box{display:grid;gap:8px;height:280px;overflow:auto;padding:12px;border:1px solid #d8e5ec;border-radius:14px;background:#f7fbfc}
+    .chat-message.user{justify-self:end;max-width:88%;background:#dfeeff;color:#214a87}.chat-message.assistant{max-width:88%}.tiny{font-size:12px;color:#617987;line-height:1.7}.empty{font-size:13px;color:#617987;padding:6px 2px}
+    @media (max-width:1100px){.stats{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}}@media (max-width:720px){.stats,.grid,.approval-item .meta{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
-  <!-- 导航栏 -->
-  <div class="navbar">
-    <h1>创新实践基地共享资源管理面板</h1>
-    <div class="user-info">
-      <div class="user-badge">
-        👤 <span id="username-display">用户</span>
-      </div>
-      <div class="role-badge" id="role-display">学生</div>
-      <button class="btn-logout" onclick="handleLogout()">退出登录</button>
+  <header class="topbar">
+    <div>
+      <h1 style="font-size:22px;margin-bottom:4px;">共享资源管理工作台</h1>
+      <div class="muted" id="subtitle">统一申请、审批、库存和归还流程</div>
     </div>
-  </div>
-  
-  <!-- 主容器 -->
-  <div class="container">
-    <div class="header">
-      <h2>仪表板</h2>
-      <span class="status-badge">✅ 系统正常</span>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span class="pill" id="user-pill">用户</span>
+      <span class="pill" id="role-pill">角色</span>
+      <button class="btn-ghost" onclick="refreshAll(true)">刷新</button>
+      <button class="btn-danger" onclick="logout()">退出</button>
     </div>
-    
-    <!-- 指标卡片 -->
-    <div class="grid-4">
-      <div class="card">
-        <div class="metric-label">资源总数</div>
-        <div class="metric-value" id="m-total-resources">0</div>
-      </div>
-      <div class="card">
-        <div class="metric-label">低库存资源</div>
-        <div class="metric-value" id="m-low-inventory">0</div>
-      </div>
-      <div class="card">
-        <div class="metric-label">预警总数</div>
-        <div class="metric-value" id="m-total-alerts">0</div>
-      </div>
-      <div class="card">
-        <div class="metric-label">我的交易数</div>
-        <div class="metric-value" id="m-user-tx">0</div>
-      </div>
-    </div>
-    
-    <!-- 主要内容区 -->
-    <div class="layout">
-      <!-- 左侧：资源列表 -->
-      <div>
-        <div class="card">
-          <h3 class="section-title">共享资源列表</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>类型</th>
-                <th>可用/总</th>
-                <th>位置</th>
-              </tr>
-            </thead>
-            <tbody id="resources-tbody"></tbody>
-          </table>
-        </div>
-        
-        <!-- 交易历史 -->
-        <div class="card" style="margin-top: 12px;">
-          <h3 class="section-title">我的交易记录</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>操作</th>
-                <th>资源</th>
-                <th>数量</th>
-              </tr>
-            </thead>
-            <tbody id="transactions-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <!-- 右侧：操作和预警 -->
-      <div>
-        <!-- 借用/领用表单 -->
-        <div class="card">
-          <h3 class="section-title">资源申请</h3>
-          
-          <div class="form-group">
-            <label for="tx-action">申请类型</label>
-            <select id="tx-action">
-              <option value="borrow">借用设备</option>
-              <option value="consume">领用物料</option>
-              <option value="return">归还设备</option>
-            </select>
-          </div>
-          
-          <div class="form-group">
-            <label for="tx-resource-id">选择资源</label>
-            <select id="tx-resource-id">
-              <option value="">请先选择申请类型</option>
-            </select>
-          </div>
-          
-          <div id="borrow-fields" class="hidden">
-            <div class="form-group">
-              <label for="borrow-time">借用时间</label>
-              <input type="datetime-local" id="borrow-time" required />
+  </header>
+
+  <main class="page">
+    <section class="flash-list" id="flash-list"></section>
+    <section class="stats">
+      <div class="stat"><div class="label" id="s1l">资源总数</div><div class="value" id="s1">0</div></div>
+      <div class="stat"><div class="label" id="s2l">低库存资源</div><div class="value" id="s2">0</div></div>
+      <div class="stat"><div class="label" id="s3l">待审批</div><div class="value" id="s3">0</div></div>
+      <div class="stat"><div class="label" id="s4l">我的借用</div><div class="value" id="s4">0</div></div>
+    </section>
+
+    <section class="two-col">
+      <div class="stack">
+        <section class="card">
+          <h2>资源概览</h2>
+          <div class="muted" style="margin-bottom:12px;">管理员可点击资源行快速带入编辑表单。</div>
+          <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>可用 / 总量</th><th>位置</th><th>状态</th></tr></thead><tbody id="resources-tbody"></tbody></table></div>
+        </section>
+
+        <section class="card" id="student-apply-section">
+          <h2>资源申请</h2>
+          <div class="muted" style="margin-bottom:12px;">学生和教师提交借用/领用申请后仅进入审批，教师或管理员通过后才扣库存。</div>
+          <form class="form" id="application-form">
+            <div class="grid">
+              <div class="field"><label for="tx-action">申请类型</label><select id="tx-action"><option value="borrow">借用设备</option><option value="consume">领用耗材</option></select></div>
+              <div class="field"><label for="tx-resource-id">资源</label><select id="tx-resource-id"></select></div>
+              <div class="field" id="borrow-time-field"><label for="borrow-time">借出时间</label><input id="borrow-time" type="datetime-local" /></div>
+              <div class="field" id="expected-return-field"><label for="expected-return-time">预计归还时间</label><input id="expected-return-time" type="datetime-local" /></div>
+              <div class="field hidden" id="consume-quantity-field"><label for="consume-quantity">领用数量</label><input id="consume-quantity" type="number" min="1" value="1" /></div>
+              <div class="field full"><label for="tx-purpose">用途</label><input id="tx-purpose" type="text" placeholder="课程实验、项目原型等" /></div>
+              <div class="field full"><label for="tx-note">备注</label><textarea id="tx-note" placeholder="补充说明"></textarea></div>
             </div>
-            <div class="form-group">
-              <label for="return-time">归还时间</label>
-              <input type="datetime-local" id="return-time" required />
+            <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="submit">提交申请</button></div>
+          </form>
+        </section>
+
+        <section class="card" id="records-section">
+          <h2 id="records-title">我的申请</h2>
+          <div class="muted" id="records-note" style="margin-bottom:12px;">后端直接返回前端需要展示的字段。</div>
+          <div class="table-wrap"><table><thead><tr><th>时间</th><th>动作</th><th>资源</th><th>数量</th><th>状态</th><th>审批</th></tr></thead><tbody id="records-tbody"></tbody></table></div>
+        </section>
+
+        <section class="card" id="borrow-records-section">
+          <h2>我的借用记录</h2>
+          <div class="muted" style="margin-bottom:12px;">归还提交的是具体借用记录 ID，不再允许按资源名随意归还。</div>
+          <div class="table-wrap"><table><thead><tr><th>设备</th><th>借出时间</th><th>预计归还</th><th>状态</th><th>操作</th></tr></thead><tbody id="borrow-records-tbody"></tbody></table></div>
+        </section>
+
+        <section class="card hidden" id="resource-management-section">
+          <h2>资源管理</h2>
+          <div class="muted" style="margin-bottom:12px;">管理员可新增/编辑资源基础信息，库存变化请走单独的库存调整表单。</div>
+          <form class="form" id="resource-form">
+            <input id="resource-edit-id" type="hidden" />
+            <div class="grid">
+              <div class="field"><label for="resource-name">名称</label><input id="resource-name" type="text" required /></div>
+              <div class="field"><label for="resource-category">类型</label><select id="resource-category"><option value="device">设备</option><option value="material">耗材</option></select></div>
+              <div class="field"><label for="resource-subtype">子类</label><input id="resource-subtype" type="text" required /></div>
+              <div class="field"><label for="resource-location">位置</label><input id="resource-location" type="text" /></div>
+              <div class="field"><label for="resource-total">总量</label><input id="resource-total" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-available">可用量</label><input id="resource-available" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-unit-cost">单价</label><input id="resource-unit-cost" type="number" min="0" step="0.01" value="0" /></div>
+              <div class="field"><label for="resource-threshold">低库存阈值</label><input id="resource-threshold" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-status">状态</label><select id="resource-status"><option value="active">active</option><option value="maintenance">maintenance</option><option value="disabled">disabled</option></select></div>
+              <div class="field full"><label for="resource-description">描述</label><textarea id="resource-description"></textarea></div>
             </div>
-          </div>
-          
-          <div id="consume-fields" class="hidden">
-            <div class="form-group">
-              <label for="consume-quantity">领用数量</label>
-              <input type="number" id="consume-quantity" min="1" value="1" required />
+            <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="submit">保存资源</button><button class="btn-ghost" type="button" onclick="resetResourceForm()">清空表单</button></div>
+          </form>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="card hidden" id="approval-center-section">
+          <h2>审批中心</h2>
+          <div class="muted" style="margin-bottom:12px;">教师和管理员都可以审批，先通过者生效，并在通过时统一更新库存。</div>
+          <div class="approval-list" id="approval-list"></div>
+        </section>
+
+        <section class="card hidden" id="inventory-adjustment-section">
+          <h2>库存调整</h2>
+          <div class="muted" style="margin-bottom:12px;">仅管理员可直接调整库存，必须记录原因和调整前后数量。</div>
+          <form class="form" id="inventory-adjustment-form">
+            <div class="grid">
+              <div class="field"><label for="adjust-resource-id">资源</label><select id="adjust-resource-id"></select></div>
+              <div class="field"><label for="adjust-total-count">调整后总量</label><input id="adjust-total-count" type="number" min="0" /></div>
+              <div class="field"><label for="adjust-available-count">调整后可用量</label><input id="adjust-available-count" type="number" min="0" /></div>
+              <div class="field full"><label for="adjust-reason">调整原因</label><textarea id="adjust-reason" placeholder="例如：盘点修正、到货入库、设备报废"></textarea></div>
             </div>
-          </div>
-          
-          <div class="form-group">
-            <label for="tx-note">备注说明（可选）</label>
-            <textarea id="tx-note" placeholder="请简要说明使用目的..."></textarea>
-          </div>
-          
-          <button class="btn" onclick="submitTransaction()">📤 提交申请</button>
-          <div id="tx-result" style="font-size: 12px; margin-top: 8px;"></div>
-        </div>
-        
-        <!-- 预警信息 -->
-        <div class="card" style="margin-top: 12px;">
-          <h3 class="section-title">系统预警</h3>
-          <div id="alerts-box" style="max-height: 200px; overflow-y: auto;"></div>
-        </div>
-        
-        <!-- 审批中心（仅管理员） -->
-        <div class="card" style="margin-top: 12px;" id="approval-panel" class="hidden">
-          <h3 class="section-title">📋 待审批申请</h3>
-          <div id="approvals-box" style="max-height: 200px; overflow-y: auto;"></div>
-        </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="submit">提交库存调整</button></div>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>系统预警</h2>
+          <div class="muted" style="margin-bottom:12px;">轮询刷新会自动同步库存和审批状态。</div>
+          <div class="approval-list" id="alerts-box"></div>
+        </section>
+
+        <section class="card">
+          <h2>智能体助手</h2>
+          <div class="muted" style="margin-bottom:12px;">统一入口：先选业务工具，再决定是否调用大模型组织回答。</div>
+          <div class="chat-box" id="chat-box"></div>
+          <div class="tiny" style="margin:10px 0;">支持库存查询、审批状态、空档推荐和异常领用分析。</div>
+          <div class="field"><label for="chat-input">提问</label><textarea id="chat-input" placeholder="例如：我明天下午想用 3D 打印机，有空档吗？"></textarea></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="button" onclick="sendChat()">发送问题</button><button class="btn-ghost" type="button" onclick="document.getElementById('chat-box').innerHTML=''">清空聊天框</button></div>
+        </section>
       </div>
-    </div>
-    
-    <!-- AI 智能体 -->
-    <div class="card" style="margin-top: 20px;">
-      <h3 class="section-title">🤖 智能资源助手</h3>
-      <div class="chat-box" id="chat-box"></div>
-      <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
-        会话 ID：<span id="session-id">新建中...</span>
-      </div>
-      <div class="row">
-        <textarea id="chat-input" placeholder="问我任何关于资源的问题..."></textarea>
-      </div>
-      <button class="btn" onclick="sendChat()">💬 发送</button>
-    </div>
-  </div>
-  
+    </section>
+  </main>
+
   <script>
-    // ============ 初始化 ============
-    let currentUser = null;
-    let currentSessionId = "";
-    let resourceCache = [];
-    
-    async function init() {
-      // 检查登录状态
-      const token = localStorage.getItem('token');
-      const userStr = localStorage.getItem('user');
-      
-      if (!token || !userStr) {
-        window.location.href = '/login';
-        return;
-      }
-      
-      try {
-        currentUser = JSON.parse(userStr);
-        setupUI();
-        await refreshAll();
-      } catch (err) {
-        console.error('初始化失败', err);
-        handleLogout();
-      }
-    }
-    
-    function setupUI() {
-      document.getElementById('username-display').innerText = currentUser.real_name || currentUser.username;
-      const roleEl = document.getElementById('role-display');
-      roleEl.innerText = getRoleLabel(currentUser.role);
-      roleEl.className = 'role-badge ' + currentUser.role;
-      
-      // 仅管理员可见审批面板
-      if (currentUser.role === 'admin') {
-        document.getElementById('approval-panel').classList.remove('hidden');
-      }
-      
-      // 添加动作类型变化监听器
-      document.getElementById('tx-action').addEventListener('change', toggleActionFields);
-      toggleActionFields(); // 初始化显示正确的字段
-    }
-    
-    function getRoleLabel(role) {
-      const labels = { admin: '👨‍💼 管理员', student: '👨‍🎓 学生', teacher: '👨‍🏫 教师' };
-      return labels[role] || role;
-    }
-    
-    function toggleActionFields() {
-      const action = document.getElementById('tx-action').value;
-      const borrowFields = document.getElementById('borrow-fields');
-      const consumeFields = document.getElementById('consume-fields');
-      
-      // 隐藏所有字段
-      borrowFields.classList.add('hidden');
-      consumeFields.classList.add('hidden');
-      
-      // 根据动作类型显示相应字段
-      if (action === 'borrow') {
-        borrowFields.classList.remove('hidden');
-      } else if (action === 'consume') {
-        consumeFields.classList.remove('hidden');
-      }
-      
-      // 根据动作类型筛选资源
-      updateResourceDropdown(action);
-    }
-    
-    function updateResourceDropdown(action) {
-      const select = document.getElementById('tx-resource-id');
-      select.innerHTML = '';
-      
-      // 根据动作类型筛选合适的资源
-      const filteredResources = resourceCache.filter(item => {
-        if (action === 'borrow') {
-          // 借用设备：只显示设备类资源
-          return item.category === 'device' && item.available_count > 0;
-        } else if (action === 'consume') {
-          // 领用物料：只显示物料类资源
-          return item.category === 'material' && item.available_count > 0;
-        } else if (action === 'return') {
-          // 归还设备：只显示设备类资源
-          return item.category === 'device';
-        }
-        return true; // 其他情况显示所有资源
-      });
-      
-      if (filteredResources.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.innerText = action === 'borrow' ? '暂无可用设备' : 
-                       action === 'consume' ? '暂无可用物料' : '暂无资源';
-        opt.disabled = true;
-        select.appendChild(opt);
-        return;
-      }
-      
-      for (const item of filteredResources) {
-        const opt = document.createElement('option');
-        opt.value = item.id;
-        const categoryLabel = item.category === 'device' ? '🔧 设备' : '📦 物料';
-        opt.innerText = `${categoryLabel} - ${item.name} (可用: ${item.available_count})`;
-        select.appendChild(opt);
-      }
-    }
-    
-    // ============ API 调用 ============
-    function getHeaders() {
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': localStorage.getItem('token')
-      };
-    }
-    
-    async function fetchJSON(url, options = {}) {
-      const resp = await fetch(url, { ...options, headers: getHeaders() });
-      if (resp.status === 401) {
-        handleLogout();
-        return null;
-      }
-      if (!resp.ok) throw new Error(`请求失败: ${resp.status}`);
-      return await resp.json();
-    }
-    
-    // ============ 数据加载 ============
-    async function loadOverview() {
-      try {
-        const data = await fetchJSON('/analytics/overview');
-        if (data) {
-          document.getElementById('m-total-resources').innerText = data.total_resources;
-          document.getElementById('m-low-inventory').innerText = data.low_inventory_resources;
-          document.getElementById('m-total-alerts').innerText = data.total_alerts;
-          
-          // 加载用户交易数
-          const txData = await fetchJSON('/transactions/');
-          document.getElementById('m-user-tx').innerText = txData?.length || 0;
-        }
-      } catch (err) {
-        console.error('加载概览失败', err);
-      }
-    }
-    
-    async function loadResources() {
-      try {
-        const list = await fetchJSON('/resources');
-        if (!list || !Array.isArray(list)) {
-          console.warn('资源列表为空或格式错误');
-          resourceCache = [];
-          return;
-        }
-        
-        resourceCache = list;
-        
-        // 更新资源列表表格
-        const tbody = document.getElementById('resources-tbody');
-        tbody.innerHTML = '';
-        for (const item of (list || []).slice(0, 10)) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${item.name}</td>
-            <td>${item.category === 'device' ? '🔧 设备' : '📦 物料'}</td>
-            <td>${item.available_count}/${item.total_count}</td>
-            <td>${item.location}</td>
-          `;
-          tbody.appendChild(tr);
-        }
-        
-        // 更新资源下拉菜单
-        const select = document.getElementById('tx-resource-id');
-        select.innerHTML = '';
-        for (const item of list) {
-          const opt = document.createElement('option');
-          opt.value = item.id;
-          opt.innerText = `${item.name} (可用: ${item.available_count})`;
-          select.appendChild(opt);
-        }
-      } catch (err) {
-        console.error('加载资源失败', err);
-        resourceCache = [];
-      }
-    }
-    
-    async function loadTransactions() {
-      try {
-        const data = await fetchJSON('/transactions/');
-        if (!data) return;
-        
-        const tbody = document.getElementById('transactions-tbody');
-        tbody.innerHTML = '';
-        
-        for (const tx of (data || []).slice(0, 8)) {
-          const tr = document.createElement('tr');
-          const actionLabel = { borrow: '借用', return: '归还', consume: '领用', replenish: '补货', lost: '丢失' }[tx.action];
-          const time = new Date(tx.created_at).toLocaleString('zh-CN');
-          
-          tr.innerHTML = `
-            <td>${time}</td>
-            <td>${actionLabel}</td>
-            <td>${tx.resource?.name || '未知'}</td>
-            <td>${tx.quantity}</td>
-          `;
-          tbody.appendChild(tr);
-        }
-      } catch (err) {
-        console.error('加载交易记录失败', err);
-      }
-    }
-    
-    async function loadAlerts() {
-      try {
-        const data = await fetchJSON('/alerts/');
-        if (!data) return;
-        
-        const box = document.getElementById('alerts-box');
-        box.innerHTML = '';
-        
-        for (const alert of (data || []).slice(0, 5)) {
-          const div = document.createElement('div');
-          div.className = 'alert-item';
-          div.innerText = `⚠️ ${alert.message}\n时间: ${new Date(alert.created_at).toLocaleString()}`;
-          box.appendChild(div);
-        }
-      } catch (err) {
-        console.error('加载预警失败', err);
-      }
-    }
-    
-    async function loadApprovals() {
-      if (currentUser.role !== 'admin') return;
-      
-      try {
-        const data = await fetchJSON('/approvals/');
-        if (!data) return;
-        
-        const box = document.getElementById('approvals-box');
-        box.innerHTML = '';
-        
-        for (const task of (data || []).slice(0, 5)) {
-          const div = document.createElement('div');
-          div.className = 'alert-item';
-          div.style.borderLeftColor = '#f59e0b';
-          div.innerText = `申请人: ${task.requester?.real_name}\n状态: ${task.status}\n操作: ${task.transaction?.action}`;
-          box.appendChild(div);
-        }
-      } catch (err) {
-        console.error('加载审批列表失败', err);
-      }
-    }
-    
-    async function refreshAll() {
-      await Promise.all([loadOverview(), loadResources(), loadTransactions(), loadAlerts(), loadApprovals()]);
-    }
-    
-    // ============ 交互 ============
-    async function submitTransaction() {
-      const resourceId = document.getElementById('tx-resource-id').value;
-      const action = document.getElementById('tx-action').value;
-      const note = document.getElementById('tx-note').value;
-      const resultEl = document.getElementById('tx-result');
-      
-      try {
-        // 基本验证
-        if (!resourceId) throw new Error('请选择资源');
-        
-        const body = {
-          resource_id: parseInt(resourceId),
-          action,
-          note: note || '',
-          purpose: '日常使用', // 添加必需的purpose字段
-          quantity: 1
-        };
-        
-        if (action === 'borrow') {
-          body.borrow_time = document.getElementById('borrow-time').value;
-          body.expected_return_time = document.getElementById('return-time').value;
-          if (!body.borrow_time || !body.expected_return_time) throw new Error('请填写借用时间');
-        }
-        
-        if (action === 'consume') {
-          const quantity = parseInt(document.getElementById('consume-quantity').value) || 1;
-          if (quantity <= 0) throw new Error('数量必须大于0');
-          body.quantity = quantity;
-        }
-        
-        const resp = await fetch('/transactions/', {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify(body)
-        });
-        
-        if (!resp.ok) {
-          // 尝试解析JSON错误信息，如果失败则使用状态文本
-          let errorMessage = '提交失败';
-          try {
-            const errorData = await resp.json();
-            errorMessage = errorData.detail || errorData.message || '提交失败';
-          } catch (jsonError) {
-            // 如果JSON解析失败，使用HTTP状态文本
-            errorMessage = resp.statusText || '提交失败';
-          }
-          throw new Error(errorMessage);
-        }
-        
-        resultEl.style.color = '#059669';
-        resultEl.innerText = '✅ 申请已提交';
-        
-        // 只有在成功提交后才刷新数据
-        await refreshAll();
-        
-        // 重置表单
-        setTimeout(() => {
-          resultEl.innerText = '';
-          document.getElementById('tx-note').value = '';
-          document.getElementById('consume-quantity').value = '1';
-          document.getElementById('borrow-time').value = '';
-          document.getElementById('return-time').value = '';
-        }, 3000);
-      } catch (err) {
-        resultEl.style.color = '#dc2626';
-        resultEl.innerText = '❌ ' + err.message;
-      }
-    }
-    
-    async function sendChat() {
-      const input = document.getElementById('chat-input').value.trim();
-      if (!input) return;
-      
-      const chatBox = document.getElementById('chat-box');
-      const userMsg = document.createElement('div');
-      userMsg.className = 'message user';
-      userMsg.innerText = input;
-      chatBox.appendChild(userMsg);
-      
-      document.getElementById('chat-input').value = '';
-      chatBox.scrollTop = chatBox.scrollHeight;
-      
-      try {
-        const resp = await fetch('/agent/chat', {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify({ message: input, session_id: currentSessionId })
-        });
-        
-        const data = await resp.json();
-        currentSessionId = data.session_id;
-        document.getElementById('session-id').innerText = (currentSessionId || '').slice(0, 8) + '...';
-        
-        const aiMsg = document.createElement('div');
-        aiMsg.className = 'message ai';
-        aiMsg.innerText = data.reply || '无法获取回复，请稍后重试';
-        chatBox.appendChild(aiMsg);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      } catch (err) {
-        const errMsg = document.createElement('div');
-        errMsg.className = 'message ai';
-        errMsg.innerText = '❌ 错误：' + err.message;
-        chatBox.appendChild(errMsg);
-      }
-    }
-    
-    function handleLogout() {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    
-    // ============ 启动 ============
-    window.addEventListener('load', init);
+    let currentUser=null,resources=[],transactions=[],approvals=[],alerts=[],sessionId='',poller=null;
+    const actionLabels={borrow:'借用',consume:'领用',replenish:'补货',lost:'丢失登记',adjust:'库存调整'};
+    const roleCanApply=r=>r==='student'||r==='teacher';
+    const roleCanApprove=r=>r==='teacher'||r==='admin';
+    const roleCanManageInventory=r=>r==='admin';
+    const roleCanManageResources=r=>r==='admin';
+    const authHeaders=()=>({'Content-Type':'application/json','Authorization':localStorage.getItem('token')});
+    const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+    const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false}):'--';
+    const badge=s=>`badge ${s}`;
+
+    async function api(url,opt={}){const res=await fetch(url,{...opt,headers:{...(opt.headers||{}),...authHeaders()}});const text=await res.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text||'请求失败'}}if(res.status===401){logout();throw new Error('登录已失效')}if(!res.ok)throw new Error(data.detail||data.message||'请求失败');return data;}
+    function flash(msg,type='info'){const item=document.createElement('div');item.className=`flash ${type}`;item.innerText=msg;document.getElementById('flash-list').prepend(item);setTimeout(()=>item.remove(),3600);}
+    function logout(){localStorage.removeItem('token');localStorage.removeItem('user');window.location.href='/login';}
+    function syncTopbar(){document.getElementById('user-pill').innerText=currentUser.real_name||currentUser.username;const role=document.getElementById('role-pill');role.innerText={student:'学生',teacher:'教师',admin:'管理员'}[currentUser.role]||currentUser.role;role.className=`pill ${currentUser.role}`;document.getElementById('subtitle').innerText={student:'提交申请不扣库存，审批通过后才扣减，归还时回补库存。',teacher:'拥有学生能力并可审批学生申请。',admin:'聚焦审批、资源管理和库存调整，不显示资源申请表单。'}[currentUser.role]||'统一申请、审批、库存和归还流程';}
+    function syncRoleSections(){document.getElementById('student-apply-section').classList.toggle('hidden',!roleCanApply(currentUser.role));document.getElementById('borrow-records-section').classList.toggle('hidden',!roleCanApply(currentUser.role));document.getElementById('approval-center-section').classList.toggle('hidden',!roleCanApprove(currentUser.role));document.getElementById('inventory-adjustment-section').classList.toggle('hidden',!roleCanManageInventory(currentUser.role));document.getElementById('resource-management-section').classList.toggle('hidden',!roleCanManageResources(currentUser.role));document.getElementById('records-title').innerText=roleCanManageInventory(currentUser.role)?'库存流水':'我的申请';document.getElementById('records-note').innerText=roleCanManageInventory(currentUser.role)?'管理员查看全部库存相关流水与审计字段。':'后端直接返回资源名、审批状态和可归还标记。';document.getElementById('s3l').innerText=roleCanApprove(currentUser.role)?'待审批':'我的申请';document.getElementById('s4l').innerText=roleCanManageInventory(currentUser.role)?'库存流水':'我的借用';}
+
+    function syncApplicationFields(){const a=document.getElementById('tx-action').value;const borrow=a==='borrow';document.getElementById('borrow-time-field').classList.toggle('hidden',!borrow);document.getElementById('expected-return-field').classList.toggle('hidden',!borrow);document.getElementById('consume-quantity-field').classList.toggle('hidden',borrow);const list=resources.filter(r=>borrow?r.category==='device':r.category==='material');document.getElementById('tx-resource-id').innerHTML=list.length?list.map(r=>`<option value="${r.id}">${esc(r.name)}（可用 ${r.available_count}/${r.total_count}）</option>`).join(''):'<option value="">暂无可选资源</option>';}
+    function syncAdjustForm(id){const r=resources.find(x=>x.id===Number(id));if(!r)return;document.getElementById('adjust-total-count').value=r.total_count;document.getElementById('adjust-available-count').value=r.available_count;}
+    function resetResourceForm(){document.getElementById('resource-form').reset();document.getElementById('resource-edit-id').value='';document.getElementById('resource-total').value='1';document.getElementById('resource-available').value='1';document.getElementById('resource-unit-cost').value='0';document.getElementById('resource-threshold').value='1';document.getElementById('resource-status').value='active';}
+    function fillResourceForm(id){const r=resources.find(x=>x.id===Number(id));if(!r)return;document.getElementById('resource-edit-id').value=r.id;document.getElementById('resource-name').value=r.name;document.getElementById('resource-category').value=r.category;document.getElementById('resource-subtype').value=r.subtype;document.getElementById('resource-location').value=r.location;document.getElementById('resource-total').value=r.total_count;document.getElementById('resource-available').value=r.available_count;document.getElementById('resource-unit-cost').value=r.unit_cost;document.getElementById('resource-threshold').value=r.min_threshold;document.getElementById('resource-status').value=r.status;document.getElementById('resource-description').value=r.description||'';}
+
+    function renderResources(){const body=document.getElementById('resources-tbody');body.innerHTML=resources.length?'':'<tr><td colspan="5" class="empty">暂无资源</td></tr>';resources.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.name)}</td><td>${r.category==='device'?'设备':'耗材'}</td><td>${r.available_count} / ${r.total_count}</td><td>${esc(r.location)}</td><td>${esc(r.status)}</td>`;if(roleCanManageResources(currentUser.role))tr.onclick=()=>fillResourceForm(r.id);body.appendChild(tr)});syncApplicationFields();document.getElementById('adjust-resource-id').innerHTML=resources.map(r=>`<option value="${r.id}">${esc(r.name)}（当前 ${r.available_count}/${r.total_count}）</option>`).join('');if(resources.length&&roleCanManageInventory(currentUser.role))syncAdjustForm(document.getElementById('adjust-resource-id').value||resources[0].id);}
+    function renderRecords(){const rows=roleCanManageInventory(currentUser.role)?transactions.slice(0,12):transactions.filter(t=>['borrow','consume'].includes(t.action)).slice(0,12);const body=document.getElementById('records-tbody');body.innerHTML=rows.length?'':'<tr><td colspan="6" class="empty">暂无记录</td></tr>';rows.forEach(t=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${fmt(t.created_at)}</td><td>${esc(actionLabels[t.action]||t.action)}</td><td>${esc(t.resource_name)}</td><td>${t.quantity}</td><td><span class="${badge(t.status)}">${esc(t.status)}</span></td><td><span class="${badge(t.approval_status)}">${esc(t.approval_status)}</span></td>`;body.appendChild(tr)});}
+    function renderBorrows(){const rows=transactions.filter(t=>t.action==='borrow');const body=document.getElementById('borrow-records-tbody');body.innerHTML=rows.length?'':'<tr><td colspan="5" class="empty">暂无借用记录</td></tr>';rows.forEach(t=>{const action=t.can_return?`<button class="btn-primary" type="button" onclick="returnBorrow(${t.id})">归还</button>`:'<span class="tiny">仅本人未归还记录可操作</span>';const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(t.resource_name)}</td><td>${fmt(t.borrow_time)}</td><td>${fmt(t.expected_return_time)}</td><td><span class="${badge(t.status)}">${esc(t.status)}</span></td><td>${action}</td>`;body.appendChild(tr)});}
+    function renderApprovals(){const box=document.getElementById('approval-list');box.innerHTML=approvals.length?'':'<div class="empty">当前没有待审批申请。</div>';approvals.forEach(a=>{const div=document.createElement('div');div.className='approval-item';div.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><strong>${esc(a.requester_name)}</strong><div class="tiny">${esc(a.requester_role)} · ${fmt(a.created_at)}</div></div><span class="${badge(a.status)}">${esc(a.status)}</span></div><div class="meta"><div><strong>资源：</strong>${esc(a.resource_name)}</div><div><strong>动作：</strong>${esc(actionLabels[a.action]||a.action)}</div><div><strong>数量：</strong>${a.quantity}</div><div><strong>备注：</strong>${esc(a.note||'无')}</div></div><div class="suggestion">${esc(a.suggestion)}</div><div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="button" onclick="reviewApproval(${a.id},true)">通过</button><button class="btn-danger" type="button" onclick="reviewApproval(${a.id},false)">拒绝</button></div>`;box.appendChild(div)});}
+    function renderAlerts(){const box=document.getElementById('alerts-box');box.innerHTML=alerts.length?'':'<div class="empty">暂无预警。</div>';alerts.slice(0,8).forEach(a=>{const div=document.createElement('div');div.className=`alert-item ${a.level==='error'?'error':''}`;div.innerHTML=`<strong>${esc(a.type)}</strong><br>${esc(a.message)}<br><span class="tiny">${fmt(a.created_at)}</span>`;box.appendChild(div)});}
+    function stats(){const low=resources.filter(r=>r.available_count<=r.min_threshold).length;const mine=transactions.filter(t=>['borrow','consume'].includes(t.action)).length;const active=transactions.filter(t=>t.action==='borrow'&&t.status==='approved'&&!t.return_time).length;document.getElementById('s1').innerText=resources.length;document.getElementById('s2').innerText=low;document.getElementById('s3').innerText=roleCanApprove(currentUser.role)?approvals.length:mine;document.getElementById('s4').innerText=roleCanManageInventory(currentUser.role)?transactions.length:active;}
+
+    async function loadResources(){resources=await api('/resources');renderResources();stats();}
+    async function loadTransactions(){transactions=await api('/transactions');renderRecords();renderBorrows();stats();}
+    async function loadApprovals(){if(!roleCanApprove(currentUser.role)){approvals=[];stats();return;}approvals=await api('/approvals?status=pending');renderApprovals();stats();}
+    async function loadAlerts(){alerts=await api('/alerts');renderAlerts();}
+    async function refreshAll(manual=false){try{await Promise.all([loadResources(),loadTransactions(),loadApprovals(),loadAlerts()]);if(manual)flash('页面数据已刷新。','success')}catch(e){flash(`刷新失败：${e.message}`,'error')}}
+
+    async function submitApplication(e){e.preventDefault();const action=document.getElementById('tx-action').value;const payload={resource_id:Number(document.getElementById('tx-resource-id').value),action,quantity:action==='consume'?Number(document.getElementById('consume-quantity').value||1):1,purpose:document.getElementById('tx-purpose').value.trim(),note:document.getElementById('tx-note').value.trim()};if(action==='borrow'){payload.borrow_time=document.getElementById('borrow-time').value;payload.expected_return_time=document.getElementById('expected-return-time').value}try{await api('/transactions',{method:'POST',body:JSON.stringify(payload)});flash('申请已提交，待审批。','success');document.getElementById('application-form').reset();document.getElementById('consume-quantity').value='1';syncApplicationFields();await refreshAll()}catch(err){flash(`申请失败，库存未变化：${err.message}`,'error')}}
+    async function reviewApproval(id,approved){const reason=prompt(approved?'请输入通过说明（可留空）':'请输入拒绝原因',approved?'审批通过':'审批拒绝');if(reason===null)return;try{await api(`/approvals/${id}/approve`,{method:'POST',body:JSON.stringify({approved,reason})});flash(approved?'审批通过，库存已更新。':'审批拒绝，库存未变化。','success');await refreshAll()}catch(err){flash(`审批失败：${err.message}`,'error')}}
+    async function returnBorrow(id){const condition=prompt('请输入归还状态：good / damaged / partial_lost','good');if(!condition)return;const note=prompt('可选：补充归还说明','')||'';try{await api(`/transactions/${id}/return`,{method:'PATCH',body:JSON.stringify({condition_return:condition,note})});flash('归还成功，库存已回补。','success');await refreshAll()}catch(err){flash(`归还失败：${err.message}`,'error')}}
+    async function saveResource(e){e.preventDefault();const id=document.getElementById('resource-edit-id').value;const payload={name:document.getElementById('resource-name').value.trim(),category:document.getElementById('resource-category').value,subtype:document.getElementById('resource-subtype').value.trim(),location:document.getElementById('resource-location').value.trim(),total_count:Number(document.getElementById('resource-total').value),available_count:Number(document.getElementById('resource-available').value),unit_cost:Number(document.getElementById('resource-unit-cost').value||0),min_threshold:Number(document.getElementById('resource-threshold').value||0),status:document.getElementById('resource-status').value,description:document.getElementById('resource-description').value.trim()};try{if(id){await api(`/resources/${id}`,{method:'PATCH',body:JSON.stringify(payload)});flash('资源信息已更新。','success')}else{await api('/resources',{method:'POST',body:JSON.stringify(payload)});flash('资源已创建。','success')}resetResourceForm();await refreshAll()}catch(err){flash(`资源保存失败：${err.message}`,'error')}}
+    async function adjustInventory(e){e.preventDefault();const resourceId=Number(document.getElementById('adjust-resource-id').value);const payload={target_total_count:Number(document.getElementById('adjust-total-count').value),target_available_count:Number(document.getElementById('adjust-available-count').value),reason:document.getElementById('adjust-reason').value.trim()};try{await api(`/resources/${resourceId}/inventory-adjustments`,{method:'POST',body:JSON.stringify(payload)});flash('库存调整已记录，审计字段已更新。','success');document.getElementById('inventory-adjustment-form').reset();await refreshAll()}catch(err){flash(`库存调整失败：${err.message}`,'error')}}
+    async function sendChat(){const input=document.getElementById('chat-input');const msg=input.value.trim();if(!msg)return;appendChat('user',msg);input.value='';try{const data=await api('/agent/chat',{method:'POST',body:JSON.stringify({message:msg,session_id:sessionId||null})});sessionId=data.session_id;appendChat('assistant',data.reply||'当前无法获取回复。')}catch(err){appendChat('assistant',`请求失败：${err.message}`)}}
+    function appendChat(role,text){const div=document.createElement('div');div.className=`chat-message ${role}`;div.innerText=text;const box=document.getElementById('chat-box');box.appendChild(div);box.scrollTop=box.scrollHeight;}
+
+    function bind(){document.getElementById('tx-action').addEventListener('change',syncApplicationFields);document.getElementById('application-form').addEventListener('submit',submitApplication);document.getElementById('resource-form').addEventListener('submit',saveResource);document.getElementById('inventory-adjustment-form').addEventListener('submit',adjustInventory);document.getElementById('adjust-resource-id').addEventListener('change',e=>syncAdjustForm(e.target.value));document.getElementById('chat-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')sendChat()});}
+    function startPolling(){if(poller)clearInterval(poller);poller=setInterval(()=>refreshAll(false),8000);}
+    async function init(){const token=localStorage.getItem('token');const user=localStorage.getItem('user');if(!token||!user){window.location.href='/login';return;}try{currentUser=JSON.parse(user);syncTopbar();syncRoleSections();bind();syncApplicationFields();appendChat('assistant','可以问我库存、审批、空档推荐或异常领用问题。');await refreshAll();startPolling()}catch{logout()}}
+    window.addEventListener('load',init);
   </script>
 </body>
 </html>

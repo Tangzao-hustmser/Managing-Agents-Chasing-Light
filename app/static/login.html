@@ -3,382 +3,408 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>创新实践基地智能管理面板 - 登录</title>
+  <title>创新实践基地资源管理 - 登录</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: "Microsoft YaHei", Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at top left, rgba(18, 95, 158, 0.18), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(18, 158, 126, 0.18), transparent 30%),
+        linear-gradient(135deg, #eef4ff 0%, #f7fbf5 100%);
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      color: #173042;
+      padding: 20px;
     }
-    
-    .login-container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-      width: 100%;
-      max-width: 400px;
-      padding: 40px;
+    .shell {
+      width: min(920px, 100%);
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
     }
-    
-    .login-header {
-      text-align: center;
-      margin-bottom: 30px;
+    .panel {
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid rgba(23, 48, 66, 0.08);
+      border-radius: 22px;
+      box-shadow: 0 24px 60px rgba(23, 48, 66, 0.14);
+      overflow: hidden;
     }
-    
-    .login-header h1 {
+    .hero {
+      padding: 34px 34px 28px;
+      background: linear-gradient(160deg, #0f4c81 0%, #0d7c77 100%);
+      color: #fff;
+      position: relative;
+      min-height: 100%;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -40px -40px auto;
+      width: 180px;
+      height: 180px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 36px;
+      transform: rotate(18deg);
+    }
+    .hero h1 {
+      font-size: 30px;
+      line-height: 1.2;
+      margin-bottom: 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero p {
+      line-height: 1.8;
+      color: rgba(255, 255, 255, 0.88);
+      position: relative;
+      z-index: 1;
+    }
+    .hero-list {
+      margin-top: 28px;
+      display: grid;
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-item {
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+    }
+    .hero-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+    .auth {
+      padding: 34px 30px;
+    }
+    .auth h2 {
       font-size: 24px;
-      color: #1f2937;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
-    
-    .login-header p {
-      color: #6b7280;
+    .auth-subtitle {
+      color: #5c7283;
+      margin-bottom: 24px;
+      line-height: 1.7;
       font-size: 14px;
     }
-    
-    .form-group {
-      margin-bottom: 20px;
-    }
-    
+    .field { margin-bottom: 16px; }
     label {
       display: block;
       margin-bottom: 8px;
-      color: #374151;
-      font-weight: 500;
       font-size: 14px;
+      font-weight: 600;
+      color: #244458;
     }
-    
     input {
       width: 100%;
-      padding: 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
+      border: 1px solid #cfe0ea;
+      border-radius: 12px;
+      padding: 13px 14px;
       font-size: 14px;
-      transition: all 0.3s;
-    }
-    
-    input:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      background: #fbfdff;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    
-    .button-group {
+    input:focus {
+      border-color: #0d7c77;
+      box-shadow: 0 0 0 4px rgba(13, 124, 119, 0.12);
+    }
+    .actions {
       display: flex;
       gap: 12px;
-      margin-top: 24px;
+      margin-top: 22px;
     }
-    
     button {
-      flex: 1;
-      padding: 12px;
       border: none;
-      border-radius: 6px;
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 13px 16px;
       font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.3s;
+      font-weight: 600;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
     }
-    
+    button:hover { transform: translateY(-1px); }
     .btn-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      flex: 1;
+      color: #fff;
+      background: linear-gradient(135deg, #0f4c81 0%, #0d7c77 100%);
+      box-shadow: 0 14px 32px rgba(15, 76, 129, 0.24);
     }
-    
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
-    }
-    
     .btn-secondary {
-      background: #e5e7eb;
-      color: #1f2937;
+      width: 132px;
+      background: #edf5f7;
+      color: #244458;
     }
-    
-    .btn-secondary:hover {
-      background: #d1d5db;
-    }
-    
-    .error {
-      color: #dc2626;
+    .message {
+      min-height: 22px;
+      margin-top: 12px;
       font-size: 13px;
-      margin-top: 8px;
-      text-align: center;
     }
-    
-    .success {
-      color: #059669;
-      font-size: 13px;
-      margin-top: 8px;
-      text-align: center;
+    .message.error { color: #c53030; }
+    .message.success { color: #167a57; }
+    .demo-area {
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid #e5eef2;
     }
-    
-    .demo-accounts {
-      margin-top: 24px;
-      padding-top: 24px;
-      border-top: 1px solid #e5e7eb;
-      font-size: 12px;
-      color: #6b7280;
-    }
-    
-    .demo-accounts h4 {
+    .demo-area h3 {
+      font-size: 14px;
       margin-bottom: 12px;
-      color: #374151;
+      color: #244458;
+    }
+    .demo-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .demo-item {
+      border: 1px solid #d7e6ec;
+      background: #f7fbfc;
+      border-radius: 14px;
+      padding: 12px 14px;
+      cursor: pointer;
+    }
+    .demo-item:hover {
+      border-color: #0d7c77;
+      background: #f1fbfa;
+    }
+    .demo-item strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #19384b;
+    }
+    .demo-item span {
+      color: #5c7283;
       font-size: 13px;
     }
-    
-    .demo-item {
-      margin-bottom: 8px;
-      padding: 8px;
-      background: #f3f4f6;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.2s;
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 29, 40, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
     }
-    
-    .demo-item:hover {
-      background: #e5e7eb;
+    .modal.show { display: flex; }
+    .modal-card {
+      width: min(460px, 100%);
+      background: #fff;
+      border-radius: 22px;
+      padding: 28px 24px;
+      box-shadow: 0 28px 60px rgba(13, 29, 40, 0.26);
     }
-    
-    .demo-item-name {
-      font-weight: 500;
-      color: #1f2937;
+    .notice {
+      margin-bottom: 18px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #eef8f7;
+      color: #245b59;
+      font-size: 13px;
+      line-height: 1.7;
     }
-    
-    .demo-item-pass {
-      color: #6b7280;
-      font-size: 11px;
-    }
-    
-    .loading {
-      opacity: 0.6;
-      cursor: not-allowed;
+    @media (max-width: 820px) {
+      .shell { grid-template-columns: 1fr; }
+      .hero { min-height: auto; }
+      .btn-secondary { width: 110px; }
     }
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-header">
-      <h1>创新实践基地</h1>
-      <p>共享资源智能管理系统</p>
-    </div>
-    
-    <form id="login-form" onsubmit="handleLogin(event)">
-      <div class="form-group">
-        <label for="username">用户名</label>
-        <input 
-          type="text" 
-          id="username" 
-          placeholder="输入用户名"
-          required
-        />
+  <div class="shell">
+    <section class="panel hero">
+      <h1>创新实践基地<br />共享资源智能管理平台</h1>
+      <p>统一借用申请、审批、库存更新和归还流程。学生提交申请不扣库存，教师或管理员审批通过后才执行库存变化，归还则关闭真实借用记录。</p>
+      <div class="hero-list">
+        <div class="hero-item">
+          <strong>学生</strong>
+          提交借用/领用申请，查看自己的申请状态和借用记录，归还自己正在借用的设备。
+        </div>
+        <div class="hero-item">
+          <strong>教师</strong>
+          拥有学生界面能力，并可进入审批中心处理学生申请。
+        </div>
+        <div class="hero-item">
+          <strong>管理员</strong>
+          负责审批、资源新增编辑、库存直接调整和运营审计，不走资源申请表单。
+        </div>
       </div>
-      
-      <div class="form-group">
-        <label for="password">密码</label>
-        <input 
-          type="password" 
-          id="password" 
-          placeholder="输入密码"
-          required
-        />
+    </section>
+
+    <section class="panel auth">
+      <h2>登录系统</h2>
+      <p class="auth-subtitle">公开注册只创建学生账号。教师和管理员账号请使用演示账号或由管理员预置。</p>
+
+      <form id="login-form">
+        <div class="field">
+          <label for="username">用户名</label>
+          <input id="username" type="text" placeholder="请输入用户名" required />
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input id="password" type="password" placeholder="请输入密码" required />
+        </div>
+        <div id="login-message" class="message"></div>
+        <div class="actions">
+          <button class="btn-primary" id="login-btn" type="submit">登录</button>
+          <button class="btn-secondary" type="button" onclick="toggleRegister(true)">注册</button>
+        </div>
+      </form>
+
+      <div class="demo-area">
+        <h3>演示账号</h3>
+        <div class="demo-grid">
+          <div class="demo-item" onclick="fillDemo('admin', 'admin123')">
+            <strong>管理员</strong>
+            <span>admin / admin123</span>
+          </div>
+          <div class="demo-item" onclick="fillDemo('teacher1', '123456')">
+            <strong>教师</strong>
+            <span>teacher1 / 123456</span>
+          </div>
+          <div class="demo-item" onclick="fillDemo('student1', '123456')">
+            <strong>学生 1</strong>
+            <span>student1 / 123456</span>
+          </div>
+          <div class="demo-item" onclick="fillDemo('student2', '123456')">
+            <strong>学生 2</strong>
+            <span>student2 / 123456</span>
+          </div>
+        </div>
       </div>
-      
-      <div id="message"></div>
-      
-      <div class="button-group">
-        <button type="submit" class="btn-primary" id="login-btn">登 录</button>
-        <button type="button" class="btn-secondary" onclick="toggleRegister()">注 册</button>
-      </div>
-    </form>
-    
-    <!-- 演示账户 -->
-    <div class="demo-accounts">
-      <h4>? 演示账户（点击可快速填充）：</h4>
-      <div class="demo-item" onclick="fillDemo('admin', 'admin123')">
-        <div class="demo-item-name">??? 管理员</div>
-        <div class="demo-item-pass">admin / admin123</div>
-      </div>
-      <div class="demo-item" onclick="fillDemo('student1', '123456')">
-        <div class="demo-item-name">??? 学生 1</div>
-        <div class="demo-item-pass">student1 / 123456</div>
-      </div>
-      <div class="demo-item" onclick="fillDemo('student2', '123456')">
-        <div class="demo-item-name">??? 学生 2</div>
-        <div class="demo-item-pass">student2 / 123456</div>
-      </div>
-      <div class="demo-item" onclick="fillDemo('teacher1', '123456')">
-        <div class="demo-item-name">??? 教师</div>
-        <div class="demo-item-pass">teacher1 / 123456</div>
-      </div>
-    </div>
+    </section>
   </div>
-  
-  <!-- 注册模态框 -->
-  <div id="register-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-    <div class="login-container" style="margin: 0;">
-      <div class="login-header">
-        <h1>新用户注册</h1>
-        <p>创建您的账号</p>
-      </div>
-      
-      <form id="register-form" onsubmit="handleRegister(event)">
-        <div class="form-group">
+
+  <div class="modal" id="register-modal">
+    <div class="modal-card">
+      <h2 style="margin-bottom: 8px;">学生注册</h2>
+      <div class="notice">公开注册入口只会创建学生账号，不接受前端自定义角色。</div>
+      <form id="register-form">
+        <div class="field">
           <label for="reg-username">用户名</label>
-          <input type="text" id="reg-username" placeholder="用户名（4-20字符）" required />
+          <input id="reg-username" type="text" placeholder="4-20 位字符" required />
         </div>
-        
-        <div class="form-group">
+        <div class="field">
           <label for="reg-password">密码</label>
-          <input type="password" id="reg-password" placeholder="密码（至少6位）" required />
+          <input id="reg-password" type="password" placeholder="至少 6 位" required />
         </div>
-        
-        <div class="form-group">
+        <div class="field">
           <label for="reg-real-name">真实姓名</label>
-          <input type="text" id="reg-real-name" placeholder="您的真实姓名" required />
+          <input id="reg-real-name" type="text" placeholder="请输入真实姓名" required />
         </div>
-        
-        <div class="form-group">
+        <div class="field">
           <label for="reg-student-id">学号/工号</label>
-          <input type="text" id="reg-student-id" placeholder="学号或工号" required />
+          <input id="reg-student-id" type="text" placeholder="请输入学号或工号" required />
         </div>
-        
-        <div class="form-group">
-          <label for="reg-email">邮箱（可选）</label>
-          <input type="email" id="reg-email" placeholder="邮箱地址" />
+        <div class="field">
+          <label for="reg-email">邮箱</label>
+          <input id="reg-email" type="email" placeholder="可选" />
         </div>
-        
-        <div id="register-message"></div>
-        
-        <div class="button-group">
-          <button type="submit" class="btn-primary">注 册</button>
-          <button type="button" class="btn-secondary" onclick="toggleRegister()">取 消</button>
+        <div id="register-message" class="message"></div>
+        <div class="actions">
+          <button class="btn-primary" type="submit">创建学生账号</button>
+          <button class="btn-secondary" type="button" onclick="toggleRegister(false)">取消</button>
         </div>
       </form>
     </div>
   </div>
-  
+
   <script>
-    function toggleRegister() {
-      const modal = document.getElementById('register-modal');
-      modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
-    }
-    
     function fillDemo(username, password) {
       document.getElementById('username').value = username;
       document.getElementById('password').value = password;
-      document.getElementById('username').focus();
     }
-    
-    async function handleLogin(e) {
-      e.preventDefault();
-      
+
+    function toggleRegister(show) {
+      document.getElementById('register-modal').classList.toggle('show', Boolean(show));
+      if (!show) {
+        document.getElementById('register-message').innerText = '';
+      }
+    }
+
+    function setMessage(id, text, type) {
+      const el = document.getElementById(id);
+      el.className = `message ${type || ''}`.trim();
+      el.innerText = text || '';
+    }
+
+    async function requestJSON(url, options) {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        data = { detail: text || '请求失败' };
+      }
+      if (!response.ok) {
+        throw new Error(data.detail || data.message || '请求失败');
+      }
+      return data;
+    }
+
+    async function handleLogin(event) {
+      event.preventDefault();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
-      const messageEl = document.getElementById('message');
-      const loginBtn = document.getElementById('login-btn');
-      
-      if (!username || !password) {
-        messageEl.className = 'error';
-        messageEl.innerText = '请输入用户名和密码';
-        return;
-      }
-      
-      loginBtn.disabled = true;
-      loginBtn.classList.add('loading');
-      loginBtn.innerText = '登录中...';
-      
+      const button = document.getElementById('login-btn');
+
+      button.disabled = true;
+      button.style.opacity = '0.7';
+      setMessage('login-message', '登录中...', 'success');
+
       try {
-        const response = await fetch('/auth/login', {
+        const data = await requestJSON('/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-        
-        if (!response.ok) {
-          throw new Error('用户名或密码错误');
-        }
-        
-        const data = await response.json();
-        
-        // 保存 token 和用户信息
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
-        messageEl.className = 'success';
-        messageEl.innerText = '登录成功，跳转中...';
-        
-        // 跳转到仪表板
-        setTimeout(() => {
-          window.location.href = '/dashboard-main';
-        }, 1000);
+        setMessage('login-message', '登录成功，正在进入工作台...', 'success');
+        setTimeout(() => { window.location.href = '/dashboard-main'; }, 600);
       } catch (error) {
-        messageEl.className = 'error';
-        messageEl.innerText = error.message || '登录失败，请重试';
+        setMessage('login-message', error.message || '登录失败，请重试', 'error');
       } finally {
-        loginBtn.disabled = false;
-        loginBtn.classList.remove('loading');
-        loginBtn.innerText = '登 录';
+        button.disabled = false;
+        button.style.opacity = '1';
       }
     }
-    
-    async function handleRegister(e) {
-      e.preventDefault();
-      
-      const username = document.getElementById('reg-username').value.trim();
-      const password = document.getElementById('reg-password').value;
-      const realName = document.getElementById('reg-real-name').value.trim();
-      const studentId = document.getElementById('reg-student-id').value.trim();
-      const email = document.getElementById('reg-email').value.trim() || null;
-      
-      const messageEl = document.getElementById('register-message');
-      
+
+    async function handleRegister(event) {
+      event.preventDefault();
       try {
-        const response = await fetch('/auth/register', {
+        await requestJSON('/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            username,
-            password,
-            real_name: realName,
-            student_id: studentId,
-            email: email
+            username: document.getElementById('reg-username').value.trim(),
+            password: document.getElementById('reg-password').value,
+            real_name: document.getElementById('reg-real-name').value.trim(),
+            student_id: document.getElementById('reg-student-id').value.trim(),
+            email: document.getElementById('reg-email').value.trim() || null
           })
         });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || '注册失败');
-        }
-        
-        messageEl.className = 'success';
-        messageEl.innerText = '注册成功！请使用新账号登录。';
-        
-        setTimeout(() => {
-          document.getElementById('register-form').reset();
-          toggleRegister();
-          messageEl.innerText = '';
-        }, 1500);
+        setMessage('register-message', '注册成功，请返回登录。', 'success');
+        document.getElementById('register-form').reset();
+        setTimeout(() => toggleRegister(false), 800);
       } catch (error) {
-        messageEl.className = 'error';
-        messageEl.innerText = error.message || '注册失败，请重试';
+        setMessage('register-message', error.message || '注册失败，请重试', 'error');
       }
     }
-    
-    // 检查是否已登录
+
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('register-form').addEventListener('submit', handleRegister);
+
     window.addEventListener('load', () => {
       const token = localStorage.getItem('token');
-      if (token) {
-        // 已登录，跳转到仪表板
+      const user = localStorage.getItem('user');
+      if (token && user) {
         window.location.href = '/dashboard-main';
       }
     });

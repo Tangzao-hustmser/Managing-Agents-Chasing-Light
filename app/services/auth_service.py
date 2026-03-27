@@ -1,28 +1,39 @@
-"""认证服务：用户注册、登录、会话管理。"""
+"""Authentication and role helpers."""
 
-import secrets
-from datetime import datetime, timedelta
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models import User
 
+VALID_ROLES = {"student", "teacher", "admin"}
 
-def register_user(db: Session, username: str, password: str, real_name: str, student_id: str, email: str, role: str = "student") -> User:
-    """注册新用户。"""
+
+def register_user(
+    db: Session,
+    username: str,
+    password: str,
+    real_name: str,
+    student_id: str,
+    email: Optional[str],
+    role: str = "student",
+) -> User:
+    """Register a new user."""
+    if role not in VALID_ROLES:
+        raise ValueError("Invalid role")
+
     existing = db.query(User).filter(User.username == username).first()
     if existing:
-        raise ValueError(f"用户名 {username} 已存在")
-    
+        raise ValueError(f"Username {username} already exists")
+
     user = User(
         username=username,
-        password=password,  # 演示用，明文存储
+        password=password,
         real_name=real_name,
         student_id=student_id,
         email=email,
         role=role,
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -31,41 +42,47 @@ def register_user(db: Session, username: str, password: str, real_name: str, stu
 
 
 def login_user(db: Session, username: str, password: str) -> User:
-    """验证用户登录，返回用户对象。"""
+    """Validate a username and password pair."""
     user = db.query(User).filter(User.username == username).first()
     if not user:
-        raise ValueError(f"用户名 {username} 不存在")
-    
+        raise ValueError("Username does not exist")
     if not user.is_active:
-        raise ValueError(f"用户 {username} 已禁用")
-    
-    # 明文比较（演示用）
+        raise ValueError("User is inactive")
     if user.password != password:
-        raise ValueError("密码错误")
-    
+        raise ValueError("Incorrect password")
     return user
 
 
-def get_user_by_id(db: Session, user_id: int) -> User:
-    """根据 ID 获取用户。"""
+def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+    """Fetch a user by id."""
     return db.query(User).filter(User.id == user_id).first()
 
 
-def get_user_by_username(db: Session, username: str) -> User:
-    """根据用户名获取用户。"""
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """Fetch a user by username."""
     return db.query(User).filter(User.username == username).first()
 
 
 def list_users(db: Session, limit: int = 100) -> List[User]:
-    """列出所有用户（仅管理员可调用）。"""
+    """List users."""
     return db.query(User).order_by(User.id.desc()).limit(limit).all()
 
 
-def is_admin(user: User) -> bool:
-    """检查用户是否为管理员。"""
-    return user and user.role == "admin"
+def is_admin(user: Optional[User]) -> bool:
+    """Return True if user is admin."""
+    return bool(user and user.role == "admin")
 
 
-def is_student(user: User) -> bool:
-    """检查用户是否为学生。"""
-    return user and user.role == "student"
+def is_teacher(user: Optional[User]) -> bool:
+    """Return True if user is teacher."""
+    return bool(user and user.role == "teacher")
+
+
+def is_student(user: Optional[User]) -> bool:
+    """Return True if user is student."""
+    return bool(user and user.role == "student")
+
+
+def is_teacher_or_admin(user: Optional[User]) -> bool:
+    """Return True if user is teacher or admin."""
+    return bool(user and user.role in {"teacher", "admin"})
