@@ -1,18 +1,22 @@
-"""数据看板路由：用于答辩展示核心管理指标。"""
+"""Basic dashboard analytics routes."""
 
-from sqlalchemy import func
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Alert, Resource, Transaction
+from app.models import Alert, Resource, Transaction, User
+from app.routers.auth import get_current_user
 
-router = APIRouter(prefix="/analytics", tags=["数据看板"])
+router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("/overview")
-def overview(db: Session = Depends(get_db)):
-    """输出总览指标：资源数、低库存数、预警数、今日流水等。"""
+def overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return core dashboard counters."""
     total_resources = db.query(func.count(Resource.id)).scalar() or 0
     low_inventory = (
         db.query(func.count(Resource.id))
@@ -32,28 +36,34 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/top-occupied-devices")
-def top_occupied_devices(db: Session = Depends(get_db)):
-    """返回设备占用率排行榜，便于识别占用不均问题。"""
+def top_occupied_devices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return device occupancy ranking."""
     devices = db.query(Resource).filter(Resource.category == "device", Resource.total_count > 0).all()
     ranked = []
-    for d in devices:
-        occupancy = 1 - (d.available_count / d.total_count)
+    for resource in devices:
+        occupancy = 1 - (resource.available_count / resource.total_count)
         ranked.append(
             {
-                "resource_id": d.id,
-                "name": d.name,
-                "available_count": d.available_count,
-                "total_count": d.total_count,
+                "resource_id": resource.id,
+                "name": resource.name,
+                "available_count": resource.available_count,
+                "total_count": resource.total_count,
                 "occupancy_rate": round(occupancy, 4),
             }
         )
-    ranked.sort(key=lambda x: x["occupancy_rate"], reverse=True)
+    ranked.sort(key=lambda item: item["occupancy_rate"], reverse=True)
     return {"items": ranked[:10]}
 
 
 @router.get("/waste-risk")
-def waste_risk(db: Session = Depends(get_db)):
-    """统计疑似浪费行为（consume 且数量较大）。"""
+def waste_risk(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return suspicious high-volume consumption statistics."""
     items = (
         db.query(
             Transaction.resource_id,

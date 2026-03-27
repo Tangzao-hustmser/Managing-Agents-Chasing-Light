@@ -1,12 +1,34 @@
 """Transaction policy, serialization, and inventory mutation helpers."""
 
-from datetime import datetime
-from typing import Optional
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Alert, ApprovalTask, Resource, Transaction, User
+from app.models import (
+    Alert,
+    ApprovalTask,
+    FollowUpTask,
+    MaintenanceRecord,
+    Resource,
+    ResourceItem,
+    Transaction,
+    User,
+)
 from app.services.auth_service import is_teacher_or_admin
+from app.services.resource_item_service import (
+    ensure_resource_item_capacity,
+    get_transaction_items,
+    is_tracked_resource,
+    link_items_to_transaction,
+    mark_items_available,
+    mark_items_lost,
+    mark_items_maintenance,
+    reserve_items_for_borrow,
+    sync_resource_available_count,
+)
 from app.services.rules_engine import run_inventory_rules, run_utilization_rules, run_waste_rules
 from app.services.time_slot_service import calculate_duration
 
@@ -54,6 +76,7 @@ def build_transaction_out(tx: Transaction, current_user: Optional[User] = None) 
     resource = tx.resource
     requester = tx.user
     approval = tx.approval_task
+    resource_item_ids = [link.resource_item_id for link in tx.item_links]
     return {
         "id": tx.id,
         "resource_id": tx.resource_id,
@@ -66,6 +89,8 @@ def build_transaction_out(tx: Transaction, current_user: Optional[User] = None) 
         "quantity": tx.quantity,
         "note": tx.note or "",
         "purpose": tx.purpose or "",
+        "project_name": tx.project_name or "",
+        "estimated_quantity": tx.estimated_quantity,
         "status": tx.status,
         "approval_status": get_approval_status(tx),
         "approval_id": approval.id if approval else None,
@@ -74,6 +99,9 @@ def build_transaction_out(tx: Transaction, current_user: Optional[User] = None) 
         "return_time": tx.return_time,
         "duration_minutes": tx.duration_minutes,
         "condition_return": tx.condition_return or "good",
+        "evidence_url": tx.evidence_url or "",
+        "evidence_type": tx.evidence_type or "",
+        "resource_item_ids": resource_item_ids,
         "can_return": can_return_transaction(tx, current_user),
         "inventory_applied": bool(tx.inventory_applied),
         "inventory_before_total": tx.inventory_before_total,
@@ -147,7 +175,82 @@ def validate_resource_action(resource: Resource, action: str) -> None:
         raise ValueError("Consume requests are only allowed for material resources")
 
 
-def apply_inventory_change(db: Session, tx: Transaction) -> Transaction:
+def _select_items_for_loss(
+    db: Session,
+    resource: Resource,
+    quantity: int,
+    preferred_item_ids: Optional[List[int]] = None,
+) -> List[ResourceItem]:
+    preferred_item_ids = preferred_item_ids or []
+    candidates = (
+        db.query(ResourceItem)
+        .filter(
+            ResourceItem.resource_id == resource.id,
+            ResourceItem.status.in_(["available", "borrowed", "maintenance", "quarantine"]),
+        )
+        .order_by(ResourceItem.id.asc())
+        .all()
+    )
+    preferred = [item for item in candidates if item.id in preferred_item_ids]
+    remaining = [item for item in candidates if item.id not in preferred_item_ids]
+    selected = (preferred + remaining)[:quantity]
+    if len(selected) < quantity:
+        raise ValueError("Not enough tracked instances to mark as lost")
+    return selected
+
+
+def _create_follow_up_task(
+    db: Session,
+    *,
+    resource: Resource,
+    transaction: Optional[Transaction],
+    task_type: str,
+    title: str,
+    description: str,
+    resource_item: Optional[ResourceItem] = None,
+    assigned_user_id: Optional[int] = None,
+    due_days: int = 3,
+) -> None:
+    db.add(
+        FollowUpTask(
+            transaction_id=transaction.id if transaction else None,
+            resource_id=resource.id,
+            resource_item_id=resource_item.id if resource_item else None,
+            assigned_user_id=assigned_user_id,
+            task_type=task_type,
+            title=title,
+            description=description,
+            due_at=datetime.utcnow() + timedelta(days=due_days),
+        )
+    )
+
+
+def _create_maintenance_record(
+    db: Session,
+    *,
+    item: ResourceItem,
+    actor: Optional[User],
+    description: str,
+    evidence_url: str = "",
+    evidence_type: str = "",
+) -> None:
+    db.add(
+        MaintenanceRecord(
+            resource_item_id=item.id,
+            recorded_by_user_id=actor.id if actor else None,
+            status=item.status,
+            description=description,
+            evidence_url=evidence_url,
+            evidence_type=evidence_type,
+        )
+    )
+
+
+def apply_inventory_change(
+    db: Session,
+    tx: Transaction,
+    preferred_item_ids: Optional[List[int]] = None,
+) -> Transaction:
     """Apply the inventory effect for one transaction exactly once."""
     if tx.inventory_applied:
         raise ValueError("Inventory change has already been applied")
@@ -161,22 +264,55 @@ def apply_inventory_change(db: Session, tx: Transaction) -> Transaction:
     if tx.action in {"borrow", "consume"}:
         if tx.quantity > resource.available_count:
             raise ValueError("Insufficient available inventory")
-        resource.available_count -= tx.quantity
+        if tx.action == "borrow" and is_tracked_resource(resource):
+            if not tx.user:
+                raise ValueError("Borrow transaction user is missing")
+            reserve_items_for_borrow(db, tx, tx.user, preferred_item_ids)
+        else:
+            resource.available_count -= tx.quantity
+
     elif tx.action == "replenish":
         resource.total_count += tx.quantity
         resource.available_count += tx.quantity
+        if is_tracked_resource(resource):
+            ensure_resource_item_capacity(db, resource)
+            sync_resource_available_count(db, resource)
+
     elif tx.action == "lost":
         if tx.quantity > resource.total_count:
             raise ValueError("Lost quantity exceeds total inventory")
-        resource.total_count -= tx.quantity
-        resource.available_count = max(0, resource.available_count - tx.quantity)
+        if is_tracked_resource(resource):
+            selected_items = _select_items_for_loss(db, resource, tx.quantity, preferred_item_ids)
+            available_lost = sum(1 for item in selected_items if item.status == "available")
+            mark_items_lost(selected_items)
+            link_items_to_transaction(db, tx, selected_items)
+            resource.total_count -= len(selected_items)
+            resource.available_count = max(0, resource.available_count - available_lost)
+            for item in selected_items:
+                _create_follow_up_task(
+                    db,
+                    resource=resource,
+                    transaction=tx,
+                    resource_item=item,
+                    task_type="loss_investigation",
+                    title=f"Investigate lost asset {item.asset_number}",
+                    description=f"Asset {item.asset_number} was reported lost. Verify accountability and update records.",
+                    assigned_user_id=tx.user_id,
+                )
+        else:
+            resource.total_count -= tx.quantity
+            resource.available_count = max(0, resource.available_count - tx.quantity)
+
     elif tx.action == "adjust":
         if tx.inventory_after_total is None or tx.inventory_after_available is None:
             raise ValueError("Adjustment targets are missing")
         if tx.inventory_after_available > tx.inventory_after_total:
             raise ValueError("Available inventory cannot exceed total inventory")
+        if is_tracked_resource(resource):
+            raise ValueError("Tracked device inventory should be adjusted through instance workflows")
         resource.total_count = tx.inventory_after_total
         resource.available_count = tx.inventory_after_available
+
     else:
         raise ValueError("Unsupported inventory action")
 
@@ -196,7 +332,18 @@ def apply_inventory_change(db: Session, tx: Transaction) -> Transaction:
     return tx
 
 
-def apply_return(db: Session, tx: Transaction, condition_return: str, note: str = "") -> Transaction:
+def apply_return(
+    db: Session,
+    tx: Transaction,
+    condition_return: str,
+    note: str = "",
+    *,
+    return_time: Optional[datetime] = None,
+    lost_quantity: int = 0,
+    evidence_url: str = "",
+    evidence_type: str = "",
+    actor: Optional[User] = None,
+) -> Transaction:
     """Close an approved borrow record and restore availability."""
     if tx.action != "borrow":
         raise ValueError("Only borrow records can be returned")
@@ -207,11 +354,94 @@ def apply_return(db: Session, tx: Transaction, condition_return: str, note: str 
     if not tx.resource:
         raise ValueError("Transaction resource is missing")
 
+    actual_return_time = return_time or datetime.utcnow()
+    if tx.borrow_time and actual_return_time < tx.borrow_time:
+        raise ValueError("return_time must be later than or equal to borrow_time")
+
     resource = tx.resource
     before_available = resource.available_count
-    resource.available_count = min(resource.total_count, resource.available_count + tx.quantity)
+    linked_items = get_transaction_items(tx)
 
-    tx.return_time = datetime.utcnow()
+    if condition_return == "partial_lost":
+        if lost_quantity <= 0 or lost_quantity > tx.quantity:
+            raise ValueError("partial_lost returns must include a valid lost_quantity")
+    elif lost_quantity:
+        raise ValueError("lost_quantity is only allowed for partial_lost returns")
+
+    if is_tracked_resource(resource):
+        ensure_resource_item_capacity(db, resource)
+
+    if condition_return == "good":
+        if linked_items:
+            mark_items_available(linked_items, resource.location)
+            sync_resource_available_count(db, resource)
+        else:
+            resource.available_count = min(resource.total_count, resource.available_count + tx.quantity)
+
+    elif condition_return == "damaged":
+        if linked_items:
+            mark_items_maintenance(linked_items, f"{resource.location} / quarantine", quarantine=True)
+            sync_resource_available_count(db, resource)
+            for item in linked_items:
+                _create_maintenance_record(
+                    db,
+                    item=item,
+                    actor=actor,
+                    description=f"Returned as damaged in transaction #{tx.id}. {note}".strip(),
+                    evidence_url=evidence_url,
+                    evidence_type=evidence_type,
+                )
+                _create_follow_up_task(
+                    db,
+                    resource=resource,
+                    transaction=tx,
+                    resource_item=item,
+                    task_type="maintenance",
+                    title=f"Inspect damaged asset {item.asset_number}",
+                    description=f"Borrow transaction #{tx.id} returned {item.asset_number} as damaged. Move through maintenance or quarantine.",
+                    assigned_user_id=actor.id if actor else None,
+                )
+        else:
+            # For non-tracked resources, damaged returns do not re-enter available inventory.
+            resource.available_count = before_available
+
+    elif condition_return == "partial_lost":
+        returned_count = tx.quantity - lost_quantity
+        if linked_items:
+            lost_items = linked_items[:lost_quantity]
+            returned_items = linked_items[lost_quantity:]
+            mark_items_lost(lost_items)
+            mark_items_available(returned_items, resource.location)
+            resource.total_count = max(0, resource.total_count - len(lost_items))
+            sync_resource_available_count(db, resource)
+        else:
+            resource.total_count = max(0, resource.total_count - lost_quantity)
+            resource.available_count = min(resource.total_count, before_available + returned_count)
+
+        _create_follow_up_task(
+            db,
+            resource=resource,
+            transaction=tx,
+            task_type="accountability",
+            title=f"Accountability review for partial loss on {resource.name}",
+            description=f"Transaction #{tx.id} returned with partial loss ({lost_quantity}/{tx.quantity}). Confirm borrower responsibility.",
+            assigned_user_id=tx.user_id,
+            due_days=2,
+        )
+        _create_follow_up_task(
+            db,
+            resource=resource,
+            transaction=tx,
+            task_type="registry_backfill",
+            title=f"Backfill registry after partial loss on {resource.name}",
+            description=f"Update asset registry and replacement plan after partial loss in transaction #{tx.id}.",
+            assigned_user_id=actor.id if actor else None,
+            due_days=5,
+        )
+    else:
+        raise ValueError("Unsupported return condition")
+
+    tx.return_time = actual_return_time
     tx.condition_return = condition_return
     tx.duration_minutes = calculate_duration(tx.borrow_time, tx.return_time) if tx.borrow_time else None
     tx.return_inventory_before_available = before_available
@@ -219,17 +449,28 @@ def apply_return(db: Session, tx: Transaction, condition_return: str, note: str 
     tx.status = "returned"
     if note:
         tx.note = append_note(tx.note, f"Return note: {note}")
+    if evidence_url:
+        tx.evidence_url = evidence_url
+    if evidence_type:
+        tx.evidence_type = evidence_type
 
     run_inventory_rules(db, resource)
     run_utilization_rules(db, resource)
 
-    if condition_return != "good":
-        level = "warn" if condition_return == "damaged" else "error"
+    if condition_return == "damaged":
         db.add(
             Alert(
-                level=level,
+                level="warn",
                 type="return_exception",
-                message=f"Resource [{resource.name}] was returned with condition={condition_return}.",
+                message=f"Resource [{resource.name}] was returned damaged and moved to maintenance/quarantine.",
+            )
+        )
+    elif condition_return == "partial_lost":
+        db.add(
+            Alert(
+                level="error",
+                type="partial_loss",
+                message=f"Resource [{resource.name}] was returned with partial loss in transaction #{tx.id}.",
             )
         )
 

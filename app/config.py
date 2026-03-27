@@ -1,14 +1,17 @@
-"""项目配置模块。"""
+"""Application settings."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """统一管理环境变量，避免在代码中硬编码配置。"""
+    """Centralized environment-backed configuration."""
 
     app_name: str = "创新实践基地共享设备和物料管理智能体"
     app_env: str = "dev"
     database_url: str = "sqlite:///./smart_lab.db"
+
+    jwt_secret: str = "change-me-in-env"
+    jwt_expire_minutes: int = 720
 
     qiniu_access_key: str = ""
     qiniu_secret_key: str = ""
@@ -22,9 +25,7 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout: int = 30
 
-    # 指定读取 .env 文件，便于本地快速启动。
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
-# 创建全局配置实例，供项目各模块直接复用。
 settings = Settings()

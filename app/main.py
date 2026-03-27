@@ -1,20 +1,18 @@
 """FastAPI application entry point."""
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import ensure_database_schema, get_db
+from app.database import ensure_database_schema
 from app.routers import agent, alerts, analytics, approvals, auth, files, resources, scheduler, transactions
-from app.schemas import AgentAskIn, AgentAskOut, AgentChatIn, AgentChatOut
-from app.services.agent_service import ask_agent
-from app.services.llm_service import chat_with_agent, check_llm_connectivity
+from app.routers import enhanced_agent, enhanced_analytics
+from app.services.llm_service import check_llm_connectivity
 
 ensure_database_schema()
 
-app = FastAPI(title=settings.app_name, version="1.1.0")
+app = FastAPI(title=settings.app_name, version="1.2.0")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth.router)
@@ -26,6 +24,8 @@ app.include_router(files.router)
 app.include_router(analytics.router)
 app.include_router(agent.router)
 app.include_router(scheduler.router)
+app.include_router(enhanced_agent.router)
+app.include_router(enhanced_analytics.router)
 
 
 @app.get("/", tags=["system"])
@@ -50,18 +50,6 @@ def dashboard_page():
 def dashboard_main_page():
     """Return the authenticated dashboard."""
     return FileResponse("app/static/dashboard-main.html")
-
-
-@app.post("/agent/ask", response_model=AgentAskOut, tags=["agent"])
-def agent_ask(payload: AgentAskIn, db: Session = Depends(get_db)):
-    """Single-turn deterministic agent endpoint."""
-    return AgentAskOut(**ask_agent(db, payload.question))
-
-
-@app.post("/agent/chat", response_model=AgentChatOut, tags=["agent"])
-def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db)):
-    """Chat endpoint backed by business tools and optional LLM summarization."""
-    return AgentChatOut(**chat_with_agent(db, payload.message, payload.session_id))
 
 
 @app.get("/debug/llm-check", tags=["diagnostics"])

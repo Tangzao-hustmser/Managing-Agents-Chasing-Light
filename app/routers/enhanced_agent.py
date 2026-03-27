@@ -1,6 +1,7 @@
-"""增强版智能体路由：支持真正的AI对话能力。"""
+"""Enhanced agent routes."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,56 +10,48 @@ from app.routers.auth import get_current_user
 from app.schemas import EnhancedAgentRequest, EnhancedAgentResponse
 from app.services.enhanced_agent_service import enhanced_ask_agent
 
-router = APIRouter(prefix="/enhanced-agent", tags=["增强版智能体"])
+router = APIRouter(prefix="/enhanced-agent", tags=["enhanced-agent"])
 
 
 @router.post("/ask", response_model=EnhancedAgentResponse)
+@router.post("/chat", response_model=EnhancedAgentResponse)
 def enhanced_ask_agent_endpoint(
     payload: EnhancedAgentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    增强版智能问答：集成大语言模型实现真正的AI对话能力。
-    
-    支持多轮对话、上下文记忆、深度分析等功能。
-    """
+    """Enhanced chat endpoint with real-time context and executable tools."""
     try:
         result = enhanced_ask_agent(
             db=db,
+            current_user=current_user,
             question=payload.question,
-            session_id=payload.session_id or "default"
+            session_id=payload.session_id,
+            confirm=payload.confirm,
+            confirmation_token=payload.confirmation_token,
         )
-        
-        return EnhancedAgentResponse(
-            session_id=result["session_id"],
-            answer=result["answer"],
-            success=result["success"],
-            real_time_data=result["real_time_data"]
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"智能体服务异常: {str(e)}")
+        return EnhancedAgentResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Enhanced agent error: {exc}") from exc
 
 
 @router.get("/health")
 def enhanced_agent_health_check(db: Session = Depends(get_db)):
-    """增强版智能体健康检查。"""
+    """Health check for the enhanced agent."""
     from app.services.llm_service import check_llm_connectivity
-    
-    # 检查LLM连接状态
+
     llm_status = check_llm_connectivity()
-    
-    # 检查数据库连接
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db_status = "healthy"
     except Exception:
         db_status = "unhealthy"
-    
+
     return {
         "service": "enhanced_agent",
         "status": "running",
         "llm": llm_status,
-        "database": db_status
+        "database": db_status,
     }

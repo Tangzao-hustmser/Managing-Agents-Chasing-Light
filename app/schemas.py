@@ -1,7 +1,7 @@
 """Pydantic request and response schemas."""
 
 from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,10 +56,10 @@ class ResourceBase(BaseModel):
     category: Literal["device", "material"]
     subtype: str
     location: str = "Innovation Lab"
-    total_count: int = 1
-    available_count: int = 1
-    unit_cost: float = 0.0
-    min_threshold: int = 1
+    total_count: int = Field(default=1, ge=0)
+    available_count: int = Field(default=1, ge=0)
+    unit_cost: float = Field(default=0.0, ge=0)
+    min_threshold: int = Field(default=1, ge=0)
     status: str = "active"
     description: str = ""
 
@@ -75,10 +75,10 @@ class ResourceUpdate(BaseModel):
     category: Optional[Literal["device", "material"]] = None
     subtype: Optional[str] = None
     location: Optional[str] = None
-    total_count: Optional[int] = None
-    available_count: Optional[int] = None
-    unit_cost: Optional[float] = None
-    min_threshold: Optional[int] = None
+    total_count: Optional[int] = Field(default=None, ge=0)
+    available_count: Optional[int] = Field(default=None, ge=0)
+    unit_cost: Optional[float] = Field(default=None, ge=0)
+    min_threshold: Optional[int] = Field(default=None, ge=0)
     status: Optional[str] = None
     description: Optional[str] = None
 
@@ -97,8 +97,94 @@ class ResourceOut(ORMBaseModel):
     min_threshold: int
     status: str
     description: str
+    item_count: int = 0
+    available_item_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class ResourceItemBase(BaseModel):
+    """Common resource-item fields."""
+
+    asset_number: str
+    serial_number: str = ""
+    qr_code: str = ""
+    status: str = "available"
+    current_location: str = "Innovation Lab"
+    current_borrower_id: Optional[int] = None
+    maintenance_notes: str = ""
+
+
+class ResourceItemCreate(ResourceItemBase):
+    """Create resource item payload."""
+
+
+class ResourceItemUpdate(BaseModel):
+    """Update resource item payload."""
+
+    asset_number: Optional[str] = None
+    serial_number: Optional[str] = None
+    qr_code: Optional[str] = None
+    status: Optional[str] = None
+    current_location: Optional[str] = None
+    current_borrower_id: Optional[int] = None
+    maintenance_notes: Optional[str] = None
+
+
+class ResourceItemOut(ORMBaseModel):
+    """Tracked resource instance."""
+
+    id: int
+    resource_id: int
+    asset_number: str
+    serial_number: str
+    qr_code: str
+    status: str
+    current_location: str
+    current_borrower_id: Optional[int]
+    maintenance_notes: str
+    last_maintenance_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MaintenanceRecordCreate(BaseModel):
+    """Maintenance record payload."""
+
+    status: str = "maintenance"
+    description: str = Field(..., min_length=1)
+    evidence_url: str = ""
+    evidence_type: str = ""
+
+
+class MaintenanceRecordOut(ORMBaseModel):
+    """Maintenance record."""
+
+    id: int
+    resource_item_id: int
+    recorded_by_user_id: Optional[int]
+    status: str
+    description: str
+    evidence_url: str
+    evidence_type: str
+    created_at: datetime
+    resolved_at: Optional[datetime]
+
+
+class FollowUpTaskOut(ORMBaseModel):
+    """Operational follow-up task."""
+
+    id: int
+    transaction_id: Optional[int]
+    resource_id: int
+    resource_item_id: Optional[int]
+    assigned_user_id: Optional[int]
+    task_type: str
+    status: str
+    title: str
+    description: str
+    created_at: datetime
+    due_at: Optional[datetime]
 
 
 class TransactionCreate(BaseModel):
@@ -111,6 +197,11 @@ class TransactionCreate(BaseModel):
     borrow_time: Optional[datetime] = None
     expected_return_time: Optional[datetime] = None
     purpose: str = ""
+    project_name: str = ""
+    estimated_quantity: Optional[int] = Field(default=None, ge=0)
+    evidence_url: str = ""
+    evidence_type: str = ""
+    resource_item_ids: List[int] = Field(default_factory=list)
 
 
 class ReturnRequest(BaseModel):
@@ -118,6 +209,10 @@ class ReturnRequest(BaseModel):
 
     condition_return: Literal["good", "damaged", "partial_lost"] = "good"
     note: str = ""
+    return_time: Optional[datetime] = None
+    lost_quantity: int = Field(default=0, ge=0)
+    evidence_url: str = ""
+    evidence_type: str = ""
 
 
 class InventoryAdjustmentRequest(BaseModel):
@@ -126,6 +221,8 @@ class InventoryAdjustmentRequest(BaseModel):
     target_total_count: int = Field(..., ge=0)
     target_available_count: int = Field(..., ge=0)
     reason: str = Field(..., min_length=1)
+    evidence_url: str = ""
+    evidence_type: str = ""
 
 
 class TransactionOut(BaseModel):
@@ -142,6 +239,8 @@ class TransactionOut(BaseModel):
     quantity: int
     note: str
     purpose: str
+    project_name: str
+    estimated_quantity: Optional[int]
     status: str
     approval_status: str
     approval_id: Optional[int]
@@ -150,6 +249,9 @@ class TransactionOut(BaseModel):
     return_time: Optional[datetime]
     duration_minutes: Optional[int]
     condition_return: str
+    evidence_url: str
+    evidence_type: str
+    resource_item_ids: List[int] = Field(default_factory=list)
     can_return: bool
     inventory_applied: bool
     inventory_before_total: Optional[int]
@@ -222,11 +324,30 @@ class AgentAskOut(BaseModel):
     answer: str
 
 
+class AgentToolExecution(BaseModel):
+    """Executed tool call info."""
+
+    name: str
+    status: str
+    summary: str
+
+
+class AgentPendingAction(BaseModel):
+    """Pending action that requires explicit confirmation."""
+
+    name: str
+    title: str
+    confirmation_token: str
+    proposed_payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentChatIn(BaseModel):
     """Chat request."""
 
     message: str
     session_id: Optional[str] = None
+    confirm: bool = False
+    confirmation_token: Optional[str] = None
 
 
 class AgentChatOut(BaseModel):
@@ -235,6 +356,9 @@ class AgentChatOut(BaseModel):
     session_id: str
     reply: str
     used_model: bool
+    confirmation_required: bool = False
+    pending_action: Optional[AgentPendingAction] = None
+    executed_tools: List[AgentToolExecution] = Field(default_factory=list)
 
 
 class ChatMessageOut(ORMBaseModel):
@@ -249,7 +373,9 @@ class EnhancedAgentRequest(BaseModel):
     """Enhanced agent payload."""
 
     question: str
-    session_id: Optional[str] = "default"
+    session_id: Optional[str] = None
+    confirm: bool = False
+    confirmation_token: Optional[str] = None
 
 
 class EnhancedAgentResponse(BaseModel):
@@ -258,14 +384,17 @@ class EnhancedAgentResponse(BaseModel):
     session_id: str
     answer: str
     success: bool
-    real_time_data: dict
+    real_time_data: Dict[str, Any] = Field(default_factory=dict)
+    confirmation_required: bool = False
+    pending_action: Optional[AgentPendingAction] = None
+    executed_tools: List[AgentToolExecution] = Field(default_factory=list)
 
 
 class SchedulerRequest(BaseModel):
     """Scheduling request."""
 
     resource_id: int
-    duration_minutes: int
+    duration_minutes: int = Field(..., ge=1)
     preferred_start: Optional[datetime] = None
 
 
@@ -277,7 +406,7 @@ class TimeSlot(BaseModel):
     day: str
     hour: int
     score: float
-    conflicts: List[Dict] = Field(default_factory=list)
+    conflicts: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class SchedulerResponse(BaseModel):
@@ -295,7 +424,7 @@ class DemandPrediction(BaseModel):
     date: str
     predicted_demand: float
     confidence: float
-    recommendation: str
+    recommendation: str = ""
 
 
 class DemandPredictionResponse(BaseModel):
@@ -305,6 +434,7 @@ class DemandPredictionResponse(BaseModel):
     days_ahead: int
     predictions: List[DemandPrediction]
     generated_at: datetime
+    prediction_method: Optional[str] = None
 
 
 class OptimizationRecommendation(BaseModel):
@@ -346,16 +476,16 @@ class SummaryStats(BaseModel):
 class ResourceUsageAnalysis(BaseModel):
     """Resource analytics."""
 
-    popular_resources: List[Dict]
-    high_utilization_devices: List[Dict]
+    popular_resources: List[Dict[str, Any]]
+    high_utilization_devices: List[Dict[str, Any]]
     analysis_period: str
 
 
 class UserBehaviorAnalysis(BaseModel):
     """User analytics."""
 
-    top_users: List[Dict]
-    user_patterns: List[Dict]
+    top_users: List[Dict[str, Any]]
+    user_patterns: List[Dict[str, Any]]
 
 
 class CostAnalysis(BaseModel):
@@ -363,15 +493,15 @@ class CostAnalysis(BaseModel):
 
     total_cost: float
     daily_avg_cost: float
-    cost_breakdown: List[Dict]
-    high_cost_items: List[Dict]
+    cost_breakdown: List[Dict[str, Any]]
+    high_cost_items: List[Dict[str, Any]]
 
 
 class TrendAnalysis(BaseModel):
     """Trend analytics."""
 
-    daily_usage: List[Dict]
-    resource_category_trends: List[Dict]
+    daily_usage: List[Dict[str, Any]]
+    resource_category_trends: List[Dict[str, Any]]
 
 
 class AnalyticsRecommendation(BaseModel):
@@ -384,6 +514,67 @@ class AnalyticsRecommendation(BaseModel):
     priority: str
 
 
+class FairnessMetrics(BaseModel):
+    """User fairness metrics."""
+
+    fairness_index: float
+    gini_coefficient: float
+    top_user_share: float
+    active_user_count: int
+
+
+class OverdueReturnItem(BaseModel):
+    """Overdue borrow record."""
+
+    transaction_id: int
+    resource_id: int
+    resource_name: str
+    user_id: int
+    user_name: str
+    overdue_hours: float
+    borrow_time: Optional[datetime]
+    expected_return_time: Optional[datetime]
+
+
+class PrimeTimeMonopolyItem(BaseModel):
+    """Prime-time monopoly record."""
+
+    resource_id: int
+    resource_name: str
+    user_id: int
+    user_name: str
+    prime_time_hours: float
+    prime_time_share: float
+    borrow_count: int
+
+
+class ProjectUsageVarianceItem(BaseModel):
+    """Project estimated vs actual usage."""
+
+    project_name: str
+    estimated_quantity: int
+    actual_quantity: int
+    variance: int
+    variance_ratio: float
+
+
+class AnomalyScoreItem(BaseModel):
+    """Entity anomaly score."""
+
+    key: str
+    name: str
+    anomaly_score: float
+    reasons: List[str] = Field(default_factory=list)
+
+
+class AnomalyScoreBreakdown(BaseModel):
+    """Grouped anomaly scores."""
+
+    users: List[AnomalyScoreItem] = Field(default_factory=list)
+    projects: List[AnomalyScoreItem] = Field(default_factory=list)
+    resources: List[AnomalyScoreItem] = Field(default_factory=list)
+
+
 class AnalyticsResponse(BaseModel):
     """Composite analytics response."""
 
@@ -394,3 +585,32 @@ class AnalyticsResponse(BaseModel):
     cost_analysis: CostAnalysis
     trends: TrendAnalysis
     recommendations: List[AnalyticsRecommendation]
+    fairness_metrics: FairnessMetrics
+    overdue_returns: List[OverdueReturnItem]
+    prime_time_monopolies: List[PrimeTimeMonopolyItem]
+    project_usage_variance: List[ProjectUsageVarianceItem]
+    anomaly_scores: AnomalyScoreBreakdown
+
+
+class InventoryVisionRequest(BaseModel):
+    """Inventory evidence analysis request."""
+
+    resource_id: int
+    evidence_url: str
+    evidence_type: str = "image"
+    ocr_text: str = ""
+    observed_count: Optional[int] = Field(default=None, ge=0)
+
+
+class InventoryVisionResponse(BaseModel):
+    """Inventory evidence analysis result."""
+
+    resource_id: int
+    resource_name: str
+    evidence_url: str
+    evidence_type: str
+    recognized_count: int
+    system_available_count: int
+    system_total_count: int
+    difference: int
+    suggestions: List[str] = Field(default_factory=list)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import get_db, ensure_database_schema
 from app.main import app
 from app.models import Resource, User
+from app.services.auth_service import hash_password
 
 
 def login_as(client: TestClient, username: str, password: str):
@@ -28,9 +29,9 @@ def test_env(tmp_path):
     session = TestingSessionLocal()
     session.add_all(
         [
-            User(username="admin", password="admin123", real_name="Admin", student_id="A001", email="admin@test.local", role="admin", is_active=True),
-            User(username="teacher1", password="123456", real_name="Teacher Wang", student_id="T001", email="teacher@test.local", role="teacher", is_active=True),
-            User(username="student1", password="123456", real_name="Student Zhang", student_id="S001", email="student@test.local", role="student", is_active=True),
+            User(username="admin", password=hash_password("admin123"), real_name="Admin", student_id="A001", email="admin@test.local", role="admin", is_active=True),
+            User(username="teacher1", password=hash_password("123456"), real_name="Teacher Wang", student_id="T001", email="teacher@test.local", role="teacher", is_active=True),
+            User(username="student1", password=hash_password("123456"), real_name="Student Zhang", student_id="S001", email="student@test.local", role="student", is_active=True),
             Resource(name="3D Printer", category="device", subtype="printer", total_count=3, available_count=3, min_threshold=1, location="Room 101"),
             Resource(name="PLA Material", category="material", subtype="consumable", total_count=20, available_count=20, min_threshold=5, location="Shelf A"),
         ]

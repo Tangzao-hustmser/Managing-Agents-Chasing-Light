@@ -1,64 +1,27 @@
-"""LLM-backed chat service with deterministic business-tool fallback."""
+"""LLM-backed chat service with executable business-tool support."""
 
 from __future__ import annotations
 
-import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Alert, ChatMessage, Resource, Transaction
-from app.services.agent_service import ask_agent, run_business_tool
-
-
-def _build_data_context(db: Session) -> str:
-    """Build a small business snapshot for the language model."""
-    low_items = (
-        db.query(Resource)
-        .filter(Resource.available_count <= Resource.min_threshold)
-        .order_by(Resource.available_count.asc())
-        .limit(10)
-        .all()
-    )
-    latest_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(8).all()
-    latest_tx = (
-        db.query(Transaction)
-        .options(joinedload(Transaction.user), joinedload(Transaction.resource))
-        .order_by(Transaction.created_at.desc())
-        .limit(8)
-        .all()
-    )
-
-    lines: List[str] = ["[Low inventory]"]
-    if low_items:
-        for resource in low_items:
-            lines.append(
-                f"- {resource.name}: available {resource.available_count}, threshold {resource.min_threshold}"
-            )
-    else:
-        lines.append("- none")
-
-    lines.append("[Recent alerts]")
-    if latest_alerts:
-        for alert in latest_alerts:
-            lines.append(f"- [{alert.level}] {alert.type}: {alert.message}")
-    else:
-        lines.append("- none")
-
-    lines.append("[Recent transactions]")
-    if latest_tx:
-        for tx in latest_tx:
-            user_name = tx.user.real_name if tx.user else f"User#{tx.user_id}"
-            resource_name = tx.resource.name if tx.resource else f"Resource#{tx.resource_id}"
-            lines.append(
-                f"- {user_name} {tx.action} {resource_name} x{tx.quantity} status={tx.status}"
-            )
-    else:
-        lines.append("- none")
-
-    return "\n".join(lines)
+from app.models import ChatMessage, ChatSession, User
+from app.services.agent_tool_service import (
+    _is_cancel_message,
+    _is_confirmation_message,
+    build_action_proposal,
+    clear_pending_action,
+    ensure_chat_session,
+    execute_pending_action,
+    get_real_time_data_context,
+    list_user_sessions,
+    run_business_query,
+    store_pending_action,
+)
 
 
 def _load_history(db: Session, session_id: str, limit: int = 12) -> List[Dict[str, str]]:
@@ -76,29 +39,28 @@ def _load_history(db: Session, session_id: str, limit: int = 12) -> List[Dict[st
 def _save_message(db: Session, session_id: str, role: str, content: str) -> None:
     """Persist a chat message."""
     db.add(ChatMessage(session_id=session_id, role=role, content=content))
+    session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+    if session:
+        session.updated_at = datetime.utcnow()
+        db.add(session)
     db.commit()
 
 
-def list_sessions(db: Session, limit: int = 20) -> List[str]:
-    """Return recent chat session ids."""
-    rows = (
-        db.query(ChatMessage.session_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(limit * 4)
-        .all()
-    )
-    session_ids: List[str] = []
-    for row in rows:
-        session_id = row[0]
-        if session_id not in session_ids:
-            session_ids.append(session_id)
-        if len(session_ids) >= limit:
-            break
-    return session_ids
+def list_sessions(db: Session, current_user: User, limit: int = 20) -> List[str]:
+    """Return recent chat session ids for one owner."""
+    return list_user_sessions(db, current_user, limit)
 
 
-def get_session_messages(db: Session, session_id: str, limit: int = 50) -> List[ChatMessage]:
-    """Return stored session messages."""
+def _get_owned_session(db: Session, current_user: User, session_id: str) -> ChatSession:
+    session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+    if not session or session.owner_user_id != current_user.id:
+        raise ValueError("Session does not belong to the current user")
+    return session
+
+
+def get_session_messages(db: Session, current_user: User, session_id: str, limit: int = 50) -> List[ChatMessage]:
+    """Return stored session messages for one owner."""
+    _get_owned_session(db, current_user, session_id)
     return (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == session_id)
@@ -108,9 +70,11 @@ def get_session_messages(db: Session, session_id: str, limit: int = 50) -> List[
     )
 
 
-def clear_session_messages(db: Session, session_id: str) -> int:
-    """Delete one chat session history."""
+def clear_session_messages(db: Session, current_user: User, session_id: str) -> int:
+    """Delete one owned chat session history."""
+    _get_owned_session(db, current_user, session_id)
     deleted = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+    db.query(ChatSession).filter(ChatSession.session_id == session_id).delete()
     db.commit()
     return deleted
 
@@ -179,45 +143,117 @@ def check_llm_connectivity() -> dict:
         }
 
 
-def chat_with_agent(db: Session, user_message: str, session_id: Optional[str] = None) -> dict:
-    """Chat entry point that uses business tools first, then optionally an LLM."""
-    sid = session_id or uuid.uuid4().hex
+def _maybe_refine_with_llm(
+    db: Session,
+    session_id: str,
+    query_result: Dict[str, str],
+    current_user: User,
+) -> tuple[str, bool]:
+    deterministic_answer = query_result["answer"]
+    if not settings.llm_enabled:
+        return deterministic_answer, False
+
+    try:
+        context_text = get_real_time_data_context(db)
+        history = _load_history(db, session_id)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are the lab resource management assistant. "
+                    "Always ground your answer in the provided business tool output. "
+                    "Do not invent inventory numbers or approval decisions. Respond in Chinese."
+                ),
+            },
+            {
+                "role": "system",
+                "content": f"Real-time context: {context_text}",
+            },
+            {
+                "role": "system",
+                "content": f"Deterministic tool answer: {deterministic_answer}",
+            },
+            *history[-8:],
+            {
+                "role": "user",
+                "content": f"请基于上面的事实，优化表达但不要改变结论。当前用户：{current_user.real_name}。",
+            },
+        ]
+        return _call_openai_compatible(messages), True
+    except Exception:
+        return deterministic_answer, False
+
+
+def chat_with_agent(
+    db: Session,
+    current_user: User,
+    user_message: str,
+    session_id: Optional[str] = None,
+    *,
+    confirm: bool = False,
+    confirmation_token: Optional[str] = None,
+) -> dict:
+    """Chat entry point that supports executable business tools."""
+    session = ensure_chat_session(db, session_id, current_user)
+    sid = session.session_id
     _save_message(db, sid, "user", user_message)
 
-    tool_result = run_business_tool(db, user_message)
-    deterministic_answer = tool_result["answer"]
+    should_confirm = confirm or _is_confirmation_message(user_message)
+    if should_confirm and session.pending_tool_name:
+        result = execute_pending_action(db, session, current_user, confirmation_token)
+        reply = result["summary"]
+        _save_message(db, sid, "assistant", reply)
+        return {
+            "session_id": sid,
+            "reply": reply,
+            "used_model": False,
+            "confirmation_required": False,
+            "pending_action": None,
+            "executed_tools": [{"name": result["name"], "status": "executed", "summary": reply}],
+        }
 
-    if settings.llm_enabled:
-        try:
-            system_prompt = (
-                "You are the lab resource management assistant. "
-                "Always ground your answer in the provided tool result and business context. "
-                "Do not invent inventory numbers or approval decisions. Respond in Chinese."
-            )
-            context_text = _build_data_context(db)
-            history = _load_history(db, sid)
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        f"{system_prompt}\n\nBusiness snapshot:\n{context_text}\n\n"
-                        f"Selected tool: {tool_result['intent']}\nTool output:\n{deterministic_answer}"
-                    ),
-                },
-                *history,
-                {
-                    "role": "user",
-                    "content": "Please answer the latest user request using the tool output above. "
-                    "Include a short recommendation when appropriate.",
-                },
-            ]
-            reply = _call_openai_compatible(messages)
-            _save_message(db, sid, "assistant", reply)
-            return {"session_id": sid, "reply": reply, "used_model": True}
-        except Exception as exc:
-            reply = f"{deterministic_answer}\n\n(LLM unavailable, using deterministic business tools only: {exc})"
-            _save_message(db, sid, "assistant", reply)
-            return {"session_id": sid, "reply": reply, "used_model": False}
+    if _is_cancel_message(user_message) and session.pending_tool_name:
+        clear_pending_action(session)
+        db.add(session)
+        db.commit()
+        reply = "已取消待执行动作。"
+        _save_message(db, sid, "assistant", reply)
+        return {
+            "session_id": sid,
+            "reply": reply,
+            "used_model": False,
+            "confirmation_required": False,
+            "pending_action": None,
+            "executed_tools": [],
+        }
 
-    _save_message(db, sid, "assistant", deterministic_answer)
-    return {"session_id": sid, "reply": deterministic_answer, "used_model": False}
+    proposal = build_action_proposal(db, current_user, user_message)
+    if proposal:
+        pending_action = store_pending_action(session, proposal)
+        db.add(session)
+        db.commit()
+        reply = (
+            f"我可以为你执行：{pending_action['title']}。\n"
+            "请发送“确认”继续，或发送“取消”放弃。"
+        )
+        _save_message(db, sid, "assistant", reply)
+        return {
+            "session_id": sid,
+            "reply": reply,
+            "used_model": False,
+            "confirmation_required": True,
+            "pending_action": pending_action,
+            "executed_tools": [],
+        }
+
+    query_result = run_business_query(db, user_message)
+    reply, used_model = _maybe_refine_with_llm(db, sid, query_result, current_user)
+    _save_message(db, sid, "assistant", reply)
+    return {
+        "session_id": sid,
+        "reply": reply,
+        "used_model": used_model,
+        "confirmation_required": False,
+        "pending_action": None,
+        "executed_tools": [],
+    }

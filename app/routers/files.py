@@ -1,22 +1,52 @@
-"""七牛云文件上传路由。"""
+"""Evidence and Qiniu file routes."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
-from app.services.qiniu_service import get_qiniu_private_download_url, get_qiniu_upload_token
+from app.database import get_db
+from app.models import User
+from app.routers.auth import get_current_user
+from app.schemas import InventoryVisionRequest, InventoryVisionResponse
+from app.services.qiniu_service import analyze_inventory_evidence, get_qiniu_private_download_url, get_qiniu_upload_token
 
-router = APIRouter(prefix="/files", tags=["文件上传"])
+router = APIRouter(prefix="/files", tags=["files"])
 
 
 @router.get("/qiniu-token")
-def fetch_qiniu_token(key: str = Query(default="", description="对象存储 key，可不传")):
-    """获取七牛云上传凭证，供前端直传使用。"""
-    return get_qiniu_upload_token(key)
+def fetch_qiniu_token(
+    key: str = Query(default="", description="Object storage key"),
+    scene: str = Query(default="general", description="Business scene"),
+    evidence_type: str = Query(default="file", description="Evidence type"),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a Qiniu upload token."""
+    return get_qiniu_upload_token(key, scene, evidence_type)
 
 
 @router.get("/qiniu-private-url")
 def fetch_qiniu_private_url(
-    key: str = Query(..., description="对象存储 key，必传"),
-    expire_seconds: int = Query(default=3600, description="链接有效期，单位秒"),
+    key: str = Query(..., description="Object storage key"),
+    expire_seconds: int = Query(default=3600, description="URL expiration in seconds"),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取私有空间文件的限时访问 URL。"""
+    """Get a temporary signed URL for a private object."""
     return get_qiniu_private_download_url(key, expire_seconds)
+
+
+@router.post("/evidence/inventory-vision", response_model=InventoryVisionResponse)
+def inspect_inventory_evidence(
+    payload: InventoryVisionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Analyze inventory evidence and compare it with system stock."""
+    return InventoryVisionResponse(
+        **analyze_inventory_evidence(
+            db=db,
+            resource_id=payload.resource_id,
+            evidence_url=payload.evidence_url,
+            evidence_type=payload.evidence_type,
+            ocr_text=payload.ocr_text,
+            observed_count=payload.observed_count,
+        )
+    )

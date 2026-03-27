@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Resource, Transaction, User
+from app.models import Resource, Transaction, TransactionItem, User
 from app.routers.auth import get_current_user
 from app.schemas import ReturnRequest, TransactionCreate, TransactionOut
 from app.services.approval_service import create_approval_task, should_require_approval
@@ -25,6 +25,8 @@ def _transaction_query(db: Session):
         joinedload(Transaction.resource),
         joinedload(Transaction.user),
         joinedload(Transaction.approval_task),
+        joinedload(Transaction.item_links),
+        joinedload(Transaction.item_links).joinedload(TransactionItem.resource_item),
     )
 
 
@@ -69,6 +71,10 @@ def create_transaction(
                 borrow_time=payload.borrow_time,
                 expected_return_time=payload.expected_return_time,
                 purpose=payload.purpose,
+                project_name=payload.project_name,
+                estimated_quantity=payload.estimated_quantity,
+                evidence_url=payload.evidence_url,
+                evidence_type=payload.evidence_type,
                 status="pending",
                 is_approved=False,
                 inventory_applied=False,
@@ -94,12 +100,17 @@ def create_transaction(
                 quantity=payload.quantity,
                 note=payload.note,
                 purpose=payload.purpose or "admin replenish",
+                project_name=payload.project_name,
+                estimated_quantity=payload.estimated_quantity,
+                evidence_url=payload.evidence_url,
+                evidence_type=payload.evidence_type,
                 status="approved",
                 is_approved=True,
             )
             db.add(tx)
             db.flush()
             tx.resource = resource
+            tx.user = current_user
             apply_inventory_change(db, tx)
 
         elif payload.action == "lost":
@@ -114,13 +125,18 @@ def create_transaction(
                 quantity=payload.quantity,
                 note=payload.note,
                 purpose=payload.purpose or "loss registration",
+                project_name=payload.project_name,
+                estimated_quantity=payload.estimated_quantity,
+                evidence_url=payload.evidence_url,
+                evidence_type=payload.evidence_type,
                 status="approved",
                 is_approved=True,
             )
             db.add(tx)
             db.flush()
             tx.resource = resource
-            apply_inventory_change(db, tx)
+            tx.user = current_user
+            apply_inventory_change(db, tx, payload.resource_item_ids)
 
         else:
             raise HTTPException(status_code=400, detail="Use PATCH /transactions/{id}/return for returns")
@@ -182,7 +198,17 @@ def return_resource(
         raise HTTPException(status_code=403, detail="You can only return your own borrowed device")
 
     try:
-        apply_return(db, tx, payload.condition_return, payload.note)
+        apply_return(
+            db,
+            tx,
+            payload.condition_return,
+            payload.note,
+            return_time=payload.return_time,
+            lost_quantity=payload.lost_quantity,
+            evidence_url=payload.evidence_url,
+            evidence_type=payload.evidence_type,
+            actor=current_user,
+        )
         db.commit()
         tx = _transaction_query(db).filter(Transaction.id == transaction_id).first()
         return build_transaction_out(tx, current_user)
