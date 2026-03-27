@@ -62,6 +62,50 @@ def test_teacher_approval_reduces_inventory(test_env):
     session.close()
 
 
+def test_overlapping_borrow_allowed_when_capacity_not_exceeded(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+
+    first = client.post("/transactions", json=test_env["borrow_payload"], headers=student_headers)
+    assert first.status_code == 200
+    approval = client.get("/approvals?status=pending", headers=teacher_headers).json()[0]
+    approved = client.post(
+        f"/approvals/{approval['id']}/approve",
+        json={"approved": True, "reason": "ok"},
+        headers=teacher_headers,
+    )
+    assert approved.status_code == 200
+
+    # Same slot, resource total_count=3: second request should still be accepted.
+    second = client.post("/transactions", json=test_env["borrow_payload"], headers=student_headers)
+    assert second.status_code == 200
+    assert second.json()["status"] == "pending"
+    assert second.json()["approval_status"] == "pending"
+
+
+def test_overlapping_borrow_blocked_when_capacity_exceeded(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+
+    full_payload = dict(test_env["borrow_payload"])
+    full_payload["quantity"] = 3
+    first = client.post("/transactions", json=full_payload, headers=student_headers)
+    assert first.status_code == 200
+    approval = client.get("/approvals?status=pending", headers=teacher_headers).json()[0]
+    approved = client.post(
+        f"/approvals/{approval['id']}/approve",
+        json={"approved": True, "reason": "ok"},
+        headers=teacher_headers,
+    )
+    assert approved.status_code == 200
+
+    second = client.post("/transactions", json=test_env["borrow_payload"], headers=student_headers)
+    assert second.status_code == 400
+    assert "capacity" in second.json()["detail"].lower()
+
+
 def test_teacher_rejection_keeps_inventory(test_env):
     client = test_env["client"]
     student_headers, _ = login_as(client, "student1", "123456")
@@ -140,6 +184,28 @@ def test_teacher_can_view_pending_approvals(test_env):
     assert item["resource_name"] == "3D Printer"
     assert item["action"] == "borrow"
     assert item["quantity"] == 1
+
+
+def test_future_approved_borrow_is_not_returnable_yet(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+
+    tx_response = client.post("/transactions", json=test_env["borrow_payload"], headers=student_headers)
+    assert tx_response.status_code == 200
+    approval = client.get("/approvals?status=pending", headers=teacher_headers).json()[0]
+    approved = client.post(
+        f"/approvals/{approval['id']}/approve",
+        json={"approved": True, "reason": "ok"},
+        headers=teacher_headers,
+    )
+    assert approved.status_code == 200
+
+    tx_list = client.get("/transactions", headers=student_headers)
+    assert tx_list.status_code == 200
+    item = next(tx for tx in tx_list.json() if tx["id"] == tx_response.json()["id"])
+    assert item["status"] == "approved"
+    assert item["can_return"] is False
 
 
 def test_return_own_borrow_record_restores_inventory(test_env):

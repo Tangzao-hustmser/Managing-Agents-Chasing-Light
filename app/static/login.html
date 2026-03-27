@@ -19,6 +19,7 @@
       color: #173042;
       padding: 20px;
     }
+    body.modal-open { overflow: hidden; }
     .shell {
       width: min(920px, 100%);
       display: grid;
@@ -72,8 +73,13 @@
     .hero-item {
       padding: 14px 16px;
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.12);
-      backdrop-filter: blur(8px);
+      background: rgba(255, 255, 255, 0.14);
+    }
+    @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+      body:not(.modal-open) .hero-item {
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+      }
     }
     .hero-item strong {
       display: block;
@@ -190,6 +196,8 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      z-index: 3000;
+      isolation: isolate;
     }
     .modal.show { display: flex; }
     .modal-card {
@@ -198,6 +206,10 @@
       border-radius: 22px;
       padding: 28px 24px;
       box-shadow: 0 28px 60px rgba(13, 29, 40, 0.26);
+      max-height: min(86vh, 760px);
+      overflow: auto;
+      position: relative;
+      z-index: 1;
     }
     .notice {
       margin-bottom: 18px;
@@ -321,7 +333,13 @@
     }
 
     function toggleRegister(show) {
-      document.getElementById('register-modal').classList.toggle('show', Boolean(show));
+      const modal = document.getElementById('register-modal');
+      const shouldShow = Boolean(show);
+      modal.classList.toggle('show', shouldShow);
+      document.body.classList.toggle('modal-open', shouldShow);
+      if (shouldShow) {
+        setTimeout(() => document.getElementById('reg-username').focus(), 0);
+      }
       if (!show) {
         document.getElementById('register-message').innerText = '';
       }
@@ -400,6 +418,16 @@
 
     document.getElementById('login-form').addEventListener('submit', handleLogin);
     document.getElementById('register-form').addEventListener('submit', handleRegister);
+    document.getElementById('register-modal').addEventListener('click', (event) => {
+      if (event.target.id === 'register-modal') {
+        toggleRegister(false);
+      }
+    });
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        toggleRegister(false);
+      }
+    });
 
     window.addEventListener('load', () => {
       const token = localStorage.getItem('token');

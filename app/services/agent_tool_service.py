@@ -574,9 +574,16 @@ def _execute_transaction_tool(db: Session, current_user: User, payload: Dict) ->
         if action == "borrow":
             if not tx.borrow_time or not tx.expected_return_time:
                 raise ValueError("Borrow request is missing borrow_time or expected_return_time")
-            conflicts = check_time_slot_conflict(db, resource.id, tx.borrow_time, tx.expected_return_time)
+            conflicts = check_time_slot_conflict(
+                db,
+                resource.id,
+                tx.borrow_time,
+                tx.expected_return_time,
+                requested_quantity=quantity,
+                capacity=resource.total_count,
+            )
             if conflicts:
-                raise ValueError("Requested time slot conflicts with an approved borrow")
+                raise ValueError("Requested time slot exceeds available device capacity")
         from app.services.approval_service import create_approval_task
 
         create_approval_task(db, tx, current_user, reason="Agent-submitted request awaiting approval")

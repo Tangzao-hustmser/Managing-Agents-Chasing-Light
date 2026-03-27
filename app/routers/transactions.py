@@ -58,9 +58,14 @@ def create_transaction(
                     payload.resource_id,
                     payload.borrow_time,
                     payload.expected_return_time,
+                    requested_quantity=payload.quantity,
+                    capacity=resource.total_count,
                 )
                 if conflicts:
-                    raise HTTPException(status_code=400, detail="The requested time slot conflicts with an approved borrow")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="The requested time slot exceeds available device capacity",
+                    )
 
             tx = Transaction(
                 resource_id=payload.resource_id,

@@ -14,8 +14,17 @@ def check_time_slot_conflict(
     borrow_time: datetime,
     return_time: datetime,
     exclude_transaction_id: Optional[int] = None,
+    *,
+    requested_quantity: int = 1,
+    capacity: Optional[int] = None,
 ) -> List[Transaction]:
-    """Return approved borrow records that overlap the requested slot."""
+    """Return blocking overlap records for one requested borrow slot.
+
+    Behavior:
+    - When ``capacity`` is None, any overlap is considered conflict (legacy mode).
+    - When ``capacity`` is provided, only return overlap records when
+      ``overlap_quantity + requested_quantity > capacity``.
+    """
     if borrow_time >= return_time:
         raise ValueError("expected_return_time must be later than borrow_time")
 
@@ -42,7 +51,12 @@ def check_time_slot_conflict(
         if max(borrow_time, tx_start) < min(return_time, tx_end):
             result.append(tx)
 
-    return result
+    if capacity is None:
+        return result
+
+    overlap_quantity = sum(max(int(tx.quantity or 1), 1) for tx in result)
+    needed_quantity = max(int(requested_quantity or 1), 1)
+    return result if overlap_quantity + needed_quantity > max(int(capacity), 0) else []
 
 
 def calculate_duration(borrow_time: datetime, return_time: Optional[datetime]) -> Optional[int]:

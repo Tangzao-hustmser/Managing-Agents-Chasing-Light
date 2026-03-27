@@ -94,10 +94,9 @@ python -m app.seed
 pytest -q
 ```
 
-当前本地回归结果：`29 passed`
+当前本地回归结果：`32 passed`
 
 ## 7. 文档入口
 
 - 使用说明：[docs/USAGE.md](docs/USAGE.md)
 - 测试文档：[docs/TESTING.md](docs/TESTING.md)
-

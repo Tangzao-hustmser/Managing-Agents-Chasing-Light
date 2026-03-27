@@ -62,12 +62,14 @@ def get_approval_status(tx: Transaction) -> str:
 
 def can_return_transaction(tx: Transaction, current_user: Optional[User]) -> bool:
     """Whether the current user can return this transaction."""
+    borrow_started = tx.borrow_time is None or tx.borrow_time <= datetime.utcnow()
     return bool(
         current_user
         and tx.user_id == current_user.id
         and tx.action == "borrow"
         and tx.status == "approved"
         and tx.return_time is None
+        and borrow_started
     )
 
 

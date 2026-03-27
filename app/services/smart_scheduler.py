@@ -28,10 +28,11 @@ class SmartScheduler:
         base_time = max(base_time, datetime.utcnow())
         self._preferred_hour = preferred_start.hour if preferred_start else None
         candidates = self._generate_time_slots(base_time, duration_minutes)
+        capacity = max(int(resource.total_count or 0), 1)
 
         scored = []
         for slot in candidates:
-            conflicts = self._check_conflicts(resource_id, slot["start"], slot["end"])
+            conflicts = self._check_conflicts(resource_id, slot["start"], slot["end"], capacity)
             slot["conflicts"] = conflicts
             slot["score"] = self._score_time_slot(resource_id, slot["start"], slot["end"], len(conflicts))
             scored.append(slot)
@@ -61,7 +62,7 @@ class SmartScheduler:
                 )
         return slots
 
-    def _check_conflicts(self, resource_id: int, start_time: datetime, end_time: datetime) -> List[Dict]:
+    def _check_conflicts(self, resource_id: int, start_time: datetime, end_time: datetime, capacity: int) -> List[Dict]:
         conflicts = (
             self.db.query(Transaction)
             .filter(
@@ -76,17 +77,20 @@ class SmartScheduler:
         )
 
         result = []
+        overlap_quantity = 0
         for tx in conflicts:
             if max(start_time, tx.borrow_time) < min(end_time, tx.expected_return_time):
+                overlap_quantity += max(int(tx.quantity or 1), 1)
                 result.append(
                     {
                         "transaction_id": tx.id,
                         "user_id": tx.user_id,
+                        "quantity": tx.quantity,
                         "borrow_time": tx.borrow_time.isoformat() if tx.borrow_time else None,
                         "expected_return_time": tx.expected_return_time.isoformat() if tx.expected_return_time else None,
                     }
                 )
-        return result
+        return result if overlap_quantity >= capacity else []
 
     def _score_time_slot(
         self,
@@ -249,3 +253,5 @@ def optimize_resource_allocation(db: Session) -> Dict:
     """Public wrapper for optimization recommendations."""
     scheduler = SmartScheduler(db)
     return scheduler.optimize_resource_allocation()
+
+
