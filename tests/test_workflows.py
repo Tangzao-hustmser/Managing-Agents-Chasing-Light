@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.models import ApprovalTask, FollowUpTask, MaintenanceRecord, Resource, ResourceItem, Transaction
 from tests.conftest import login_as
@@ -154,6 +154,162 @@ def test_admin_direct_inventory_adjustment_success(test_env):
     session.close()
 
 
+def test_admin_inventory_adjustment_only_available_change_succeeds(test_env):
+    client = test_env["client"]
+    admin_headers, _ = login_as(client, "admin", "admin123")
+    session = test_env["SessionLocal"]()
+
+    response = client.post(
+        "/resources/2/inventory-adjustments",
+        json={"target_total_count": 20, "target_available_count": 18, "reason": "material recount"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == "adjust"
+    assert data["inventory_before_total"] == 20
+    assert data["inventory_after_total"] == 20
+    assert data["inventory_before_available"] == 20
+    assert data["inventory_after_available"] == 18
+
+    session.expire_all()
+    resource = session.get(Resource, 2)
+    assert resource.total_count == 20
+    assert resource.available_count == 18
+    session.close()
+
+
+def test_admin_direct_inventory_adjustment_success_for_tracked_device(test_env):
+    client = test_env["client"]
+    admin_headers, _ = login_as(client, "admin", "admin123")
+    session = test_env["SessionLocal"]()
+
+    response = client.post(
+        "/resources/1/inventory-adjustments",
+        json={"target_total_count": 2, "target_available_count": 2, "reason": "maintenance consolidation"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == "adjust"
+    assert data["inventory_before_total"] == 3
+    assert data["inventory_after_total"] == 2
+    assert data["inventory_after_available"] == 2
+
+    session.expire_all()
+    resource = session.get(Resource, 1)
+    assert resource.total_count == 2
+    assert resource.available_count == 2
+    active_items = session.query(ResourceItem).filter(ResourceItem.resource_id == 1, ResourceItem.status != "disabled").count()
+    assert active_items == 2
+    session.close()
+
+
+def test_admin_can_archive_resource_and_list_hides_disabled_by_default(test_env):
+    client = test_env["client"]
+    admin_headers, _ = login_as(client, "admin", "admin123")
+    student_headers, _ = login_as(client, "student1", "123456")
+    session = test_env["SessionLocal"]()
+
+    created = client.post(
+        "/resources",
+        json={
+            "name": "Temp Jig",
+            "category": "material",
+            "subtype": "fixture",
+            "location": "Shelf B",
+            "total_count": 5,
+            "available_count": 5,
+            "unit_cost": 10,
+            "min_threshold": 1,
+            "status": "active",
+            "description": "for archive test",
+        },
+        headers=admin_headers,
+    )
+    assert created.status_code == 200
+    resource_id = created.json()["id"]
+
+    archived = client.delete(f"/resources/{resource_id}", headers=admin_headers)
+    assert archived.status_code == 200
+
+    blocked_use = client.post(
+        "/transactions",
+        json={
+            "resource_id": resource_id,
+            "action": "consume",
+            "quantity": 1,
+            "purpose": "should fail",
+            "note": "archived",
+        },
+        headers=student_headers,
+    )
+    assert blocked_use.status_code == 400
+    assert "archived" in blocked_use.json()["detail"].lower()
+
+    default_list = client.get("/resources", headers=admin_headers)
+    assert default_list.status_code == 200
+    assert all(item["id"] != resource_id for item in default_list.json())
+
+    include_disabled = client.get("/resources?include_disabled=true", headers=admin_headers)
+    assert include_disabled.status_code == 200
+    disabled_item = next(item for item in include_disabled.json() if item["id"] == resource_id)
+    assert disabled_item["status"] == "disabled"
+
+    session.expire_all()
+    archived_resource = session.get(Resource, resource_id)
+    assert archived_resource.status == "disabled"
+    assert archived_resource.total_count == 5
+    assert archived_resource.available_count == 5
+    session.close()
+
+
+def test_admin_can_restore_archived_resource(test_env):
+    client = test_env["client"]
+    admin_headers, _ = login_as(client, "admin", "admin123")
+    session = test_env["SessionLocal"]()
+
+    created = client.post(
+        "/resources",
+        json={
+            "name": "Temp Board",
+            "category": "material",
+            "subtype": "pcb",
+            "location": "Shelf C",
+            "total_count": 8,
+            "available_count": 6,
+            "unit_cost": 2,
+            "min_threshold": 1,
+            "status": "active",
+            "description": "for restore test",
+        },
+        headers=admin_headers,
+    )
+    assert created.status_code == 200
+    resource_id = created.json()["id"]
+
+    archived = client.delete(f"/resources/{resource_id}", headers=admin_headers)
+    assert archived.status_code == 200
+
+    restored = client.post(f"/resources/{resource_id}/restore", headers=admin_headers)
+    assert restored.status_code == 200
+    restored_data = restored.json()
+    assert restored_data["status"] == "active"
+    assert restored_data["total_count"] == 8
+    assert restored_data["available_count"] == 6
+
+    default_list = client.get("/resources", headers=admin_headers)
+    assert default_list.status_code == 200
+    assert any(item["id"] == resource_id for item in default_list.json())
+
+    session.expire_all()
+    restored_resource = session.get(Resource, resource_id)
+    assert restored_resource.status == "active"
+    assert restored_resource.total_count == 8
+    assert restored_resource.available_count == 6
+    session.close()
+
+
 def test_student_cannot_approve(test_env):
     client = test_env["client"]
     student_headers, _ = login_as(client, "student1", "123456")
@@ -240,6 +396,33 @@ def test_return_own_borrow_record_restores_inventory(test_env):
     session.close()
 
 
+def test_return_supports_timezone_aware_return_time(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+
+    payload = _borrow_payload(hours_from_now=-3, duration_hours=2, quantity=1)
+    tx_response = client.post("/transactions", json=payload, headers=student_headers)
+    assert tx_response.status_code == 200
+    approval = client.get("/approvals?status=pending", headers=teacher_headers).json()[0]
+    approved = client.post(
+        f"/approvals/{approval['id']}/approve",
+        json={"approved": True, "reason": "ok"},
+        headers=teacher_headers,
+    )
+    assert approved.status_code == 200
+
+    # Frontend uses new Date().toISOString(), which is timezone-aware (UTC offset).
+    aware_return_time = datetime.now(timezone.utc).isoformat()
+    returned = client.patch(
+        f"/transactions/{tx_response.json()['id']}/return",
+        json={"condition_return": "good", "return_time": aware_return_time},
+        headers=student_headers,
+    )
+    assert returned.status_code == 200
+    assert returned.json()["status"] == "returned"
+
+
 def test_damaged_return_moves_item_to_quarantine_and_creates_maintenance(test_env):
     client = test_env["client"]
     student_headers, _ = login_as(client, "student1", "123456")
@@ -310,7 +493,31 @@ def test_partial_lost_return_reduces_total_and_creates_followups(test_env):
     assert resource.total_count == 2
     assert resource.available_count == 2
     task_types = {task.task_type for task in session.query(FollowUpTask).all()}
-    assert {"accountability", "registry_backfill"}.issubset(task_types)
+    assert {"accountability", "registry_backfill", "evidence_backfill"}.issubset(task_types)
+    session.close()
+
+
+def test_loss_registration_without_evidence_creates_backfill_task(test_env):
+    client = test_env["client"]
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+    session = test_env["SessionLocal"]()
+
+    created = client.post(
+        "/transactions",
+        json={
+            "resource_id": 2,
+            "action": "lost",
+            "quantity": 1,
+            "purpose": "loss registration",
+            "note": "missing after workshop",
+        },
+        headers=teacher_headers,
+    )
+    assert created.status_code == 200
+
+    session.expire_all()
+    task_types = {task.task_type for task in session.query(FollowUpTask).all()}
+    assert "evidence_backfill" in task_types
     session.close()
 
 
@@ -357,3 +564,89 @@ def test_failed_submit_does_not_dirty_write(test_env):
     assert session.query(Transaction).count() == before_tx
     assert session.query(ApprovalTask).count() == before_approval
     session.close()
+
+
+def test_scheduler_slots_include_fairness_fields(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+
+    response = client.post(
+        "/scheduler/optimal-slots",
+        json={
+            "resource_id": 1,
+            "duration_minutes": 120,
+            "preferred_start": (datetime.utcnow() + timedelta(days=1)).isoformat(),
+        },
+        headers=student_headers,
+    )
+    assert response.status_code == 200
+    slots = response.json()["optimal_slots"]
+    assert len(slots) > 0
+    assert "fairness_penalty" in slots[0]
+    assert "fairness_reasons" in slots[0]
+
+
+def test_admin_can_update_fairness_policy_and_trigger_penalty(test_env):
+    client = test_env["client"]
+    admin_headers, _ = login_as(client, "admin", "admin123")
+    student_headers, _ = login_as(client, "student1", "123456")
+    teacher_headers, _ = login_as(client, "teacher1", "123456")
+
+    baseline = client.get("/scheduler/fairness-policy", headers=admin_headers)
+    assert baseline.status_code == 200
+    original_policy = baseline.json()
+
+    try:
+        created = client.post("/transactions", json=test_env["borrow_payload"], headers=student_headers)
+        assert created.status_code == 200
+        approval = client.get("/approvals?status=pending", headers=teacher_headers).json()[0]
+        approved = client.post(
+            f"/approvals/{approval['id']}/approve",
+            json={"approved": True, "reason": "seed fairness usage"},
+            headers=teacher_headers,
+        )
+        assert approved.status_code == 200
+
+        updated = client.patch(
+            "/scheduler/fairness-policy",
+            json={
+                "enabled": True,
+                "golden_hours_enabled": False,
+                "consecutive_limit_enabled": False,
+                "high_freq_penalty_enabled": True,
+                "weekly_borrow_threshold": 1,
+                "high_freq_penalty": 25,
+            },
+            headers=admin_headers,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["weekly_borrow_threshold"] == 1
+        assert updated.json()["high_freq_penalty"] == 25.0
+
+        slots = client.post(
+            "/scheduler/optimal-slots",
+            json={
+                "resource_id": 1,
+                "duration_minutes": 120,
+                "preferred_start": (datetime.utcnow() + timedelta(days=1)).isoformat(),
+            },
+            headers=student_headers,
+        )
+        assert slots.status_code == 200
+        penalties = [item["fairness_penalty"] for item in slots.json()["optimal_slots"]]
+        assert any(value >= 25.0 for value in penalties)
+    finally:
+        rollback_payload = {k: v for k, v in original_policy.items() if k != "updated_at"}
+        client.patch("/scheduler/fairness-policy", json=rollback_payload, headers=admin_headers)
+
+
+def test_non_admin_cannot_update_fairness_policy(test_env):
+    client = test_env["client"]
+    student_headers, _ = login_as(client, "student1", "123456")
+
+    response = client.patch(
+        "/scheduler/fairness-policy",
+        json={"weekly_borrow_threshold": 3},
+        headers=student_headers,
+    )
+    assert response.status_code == 403

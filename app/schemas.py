@@ -184,7 +184,34 @@ class FollowUpTaskOut(ORMBaseModel):
     title: str
     description: str
     created_at: datetime
+    updated_at: datetime
     due_at: Optional[datetime]
+    closed_at: Optional[datetime]
+    result: str = ""
+    outcome_score: Optional[float] = None
+    escalation_level: int = 0
+    escalated_at: Optional[datetime] = None
+
+
+class FollowUpTaskDetailOut(FollowUpTaskOut):
+    """Follow-up task with display metadata and permission hints."""
+
+    resource_name: str = ""
+    resource_category: str = ""
+    resource_item_asset_number: Optional[str] = None
+    assigned_user_name: Optional[str] = None
+    transaction_action: Optional[str] = None
+    sla_status: str = "on_track"
+    can_update: bool = False
+
+
+class FollowUpTaskUpdate(BaseModel):
+    """Update a follow-up task status."""
+
+    status: Literal["open", "in_progress", "done", "cancelled"]
+    note: str = ""
+    result: Optional[str] = None
+    outcome_score: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class TransactionCreate(BaseModel):
@@ -308,6 +335,52 @@ class AlertOut(ORMBaseModel):
     level: str
     type: str
     message: str
+    status: str
+    dedup_key: str = ""
+    last_seen_at: Optional[datetime]
+    occurrence_count: int = 1
+    acknowledged_at: Optional[datetime]
+    acknowledged_by_user_id: Optional[int]
+    resolved_at: Optional[datetime]
+    resolved_by_user_id: Optional[int]
+    resolution_note: str
+    created_at: datetime
+
+
+class AlertActionIn(BaseModel):
+    """Alert acknowledgment/resolve payload."""
+
+    note: str = ""
+
+
+class NotificationDeliveryOut(ORMBaseModel):
+    """Notification delivery log output."""
+
+    id: int
+    event_type: str
+    channel: str
+    title: str
+    content: str
+    target: str
+    correlation_key: str
+    status: str
+    response_message: str
+    created_at: datetime
+
+
+class AuditLogOut(ORMBaseModel):
+    """Operational audit log output."""
+
+    id: int
+    actor_user_id: int
+    actor_role: str
+    action: str
+    entity_type: str
+    entity_id: str
+    http_method: str
+    request_path: str
+    idempotency_key: str
+    detail_json: str
     created_at: datetime
 
 
@@ -322,6 +395,7 @@ class AgentAskOut(BaseModel):
 
     intent: str
     answer: str
+    analysis_steps: List[str] = Field(default_factory=list)
 
 
 class AgentToolExecution(BaseModel):
@@ -367,6 +441,7 @@ class AgentChatOut(BaseModel):
     session_id: str
     reply: str
     used_model: bool
+    analysis_steps: List[str] = Field(default_factory=list)
     confirmation_required: bool = False
     pending_action: Optional[AgentPendingAction] = None
     executed_tools: List[AgentToolExecution] = Field(default_factory=list)
@@ -396,7 +471,10 @@ class EnhancedAgentResponse(BaseModel):
     session_id: str
     answer: str
     success: bool
+    analysis_steps: List[str] = Field(default_factory=list)
     real_time_data: Dict[str, Any] = Field(default_factory=dict)
+    multi_agent_trace: List[Dict[str, Any]] = Field(default_factory=list)
+    orchestration_summary: str = ""
     confirmation_required: bool = False
     pending_action: Optional[AgentPendingAction] = None
     executed_tools: List[AgentToolExecution] = Field(default_factory=list)
@@ -419,6 +497,8 @@ class TimeSlot(BaseModel):
     hour: int
     score: float
     conflicts: List[Dict[str, Any]] = Field(default_factory=list)
+    fairness_penalty: float = 0.0
+    fairness_reasons: List[str] = Field(default_factory=list)
 
 
 class SchedulerResponse(BaseModel):
@@ -465,6 +545,41 @@ class OptimizationResponse(BaseModel):
     total_devices: int
     recommendations: List[OptimizationRecommendation]
     generated_at: datetime
+
+
+class FairnessPolicyConfig(BaseModel):
+    """Runtime fairness governance policy for scheduler."""
+
+    enabled: bool
+    golden_hours_enabled: bool
+    golden_hour_start: int
+    golden_hour_end: int
+    golden_time_quota_ratio: float
+    golden_time_penalty: float
+    consecutive_limit_enabled: bool
+    max_consecutive_bookings: int
+    consecutive_penalty: float
+    high_freq_penalty_enabled: bool
+    weekly_borrow_threshold: int
+    high_freq_penalty: float
+    updated_at: datetime
+
+
+class FairnessPolicyUpdate(BaseModel):
+    """Partial update payload for fairness policy."""
+
+    enabled: Optional[bool] = None
+    golden_hours_enabled: Optional[bool] = None
+    golden_hour_start: Optional[int] = Field(default=None, ge=0, le=23)
+    golden_hour_end: Optional[int] = Field(default=None, ge=1, le=24)
+    golden_time_quota_ratio: Optional[float] = Field(default=None, ge=0, le=1)
+    golden_time_penalty: Optional[float] = Field(default=None, ge=0, le=100)
+    consecutive_limit_enabled: Optional[bool] = None
+    max_consecutive_bookings: Optional[int] = Field(default=None, ge=1, le=20)
+    consecutive_penalty: Optional[float] = Field(default=None, ge=0, le=100)
+    high_freq_penalty_enabled: Optional[bool] = None
+    weekly_borrow_threshold: Optional[int] = Field(default=None, ge=0, le=200)
+    high_freq_penalty: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class PeriodInfo(BaseModel):
@@ -618,6 +733,53 @@ class AnalyticsResponse(BaseModel):
     anomaly_scores: AnomalyScoreBreakdown
 
 
+class KPIPeriod(BaseModel):
+    """KPI comparison periods."""
+
+    days: int
+    current_start: datetime
+    current_end: datetime
+    baseline_start: datetime
+    baseline_end: datetime
+
+
+class KPIDictionaryItem(BaseModel):
+    """KPI metric dictionary item."""
+
+    id: str
+    name: str
+    unit: str
+    direction: str
+    formula: str
+    description: str
+
+
+class KPIItem(BaseModel):
+    """KPI metric with baseline comparison."""
+
+    id: str
+    name: str
+    unit: str
+    direction: str
+    formula: str
+    description: str
+    baseline_value: float
+    current_value: float
+    improvement_value: float
+    improvement_percent: float
+    trend: str
+    interpretation: str
+
+
+class KPIDashboardResponse(BaseModel):
+    """KPI dashboard payload."""
+
+    period: KPIPeriod
+    metrics: List[KPIItem]
+    dictionary: List[KPIDictionaryItem]
+    generated_at: datetime
+
+
 class InventoryVisionRequest(BaseModel):
     """Inventory evidence analysis request."""
 
@@ -636,6 +798,10 @@ class InventoryVisionResponse(BaseModel):
     evidence_url: str
     evidence_type: str
     recognized_count: int
+    recognition_confidence: float = 0.0
+    recognized_sources: List[str] = Field(default_factory=list)
+    extracted_candidates: List[int] = Field(default_factory=list)
+    disagreement_index: float = 0.0
     system_available_count: int
     system_total_count: int
     difference: int

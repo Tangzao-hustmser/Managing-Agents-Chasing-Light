@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout: int = 30
 
+    alert_dedup_window_seconds: int = 300
+    notify_in_app_enabled: bool = True
+    notify_webhook_enabled: bool = False
+    notify_webhook_url: str = ""
+    notify_timeout: int = 5
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: int = 60
+    rate_limit_max_requests: int = 1000
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

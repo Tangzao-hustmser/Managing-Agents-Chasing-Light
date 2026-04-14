@@ -6,6 +6,8 @@ from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import ApprovalTask, Transaction, User
+from app.services.concurrency_service import acquire_entity_lock
+from app.services.notification_service import dispatch_notification_event
 from app.services.transaction_service import action_requires_approval, apply_inventory_change
 
 
@@ -29,6 +31,14 @@ def create_approval_task(
     )
     db.add(task)
     db.flush()
+    resource_name = transaction.resource.name if transaction.resource else f"Resource#{transaction.resource_id}"
+    dispatch_notification_event(
+        db,
+        event_type="approval_pending",
+        title="待审批提醒",
+        content=f"新增待审批申请 #{task.id}：{transaction.action} {resource_name} x{transaction.quantity}",
+        correlation_key=f"approval:{task.id}",
+    )
     return task
 
 
@@ -60,24 +70,32 @@ def approve_task(
     reason: str = "",
 ) -> ApprovalTask:
     """Approve a task and apply the inventory effect."""
-    if task.status != "pending":
-        raise ValueError("This approval task has already been handled")
-    if task.requester_id == approver.id:
-        raise ValueError("You cannot approve your own request")
+    with acquire_entity_lock(f"approval:{task.id}"):
+        locked_task = (
+            _approval_query(db)
+            .filter(ApprovalTask.id == task.id)
+            .first()
+        )
+        if not locked_task:
+            raise ValueError("Approval task not found")
+        if locked_task.status != "pending":
+            raise ValueError("This approval task has already been handled")
+        if locked_task.requester_id == approver.id:
+            raise ValueError("You cannot approve your own request")
 
-    tx = task.transaction
-    if not tx:
-        raise ValueError("The linked transaction does not exist")
+        tx = locked_task.transaction
+        if not tx:
+            raise ValueError("The linked transaction does not exist")
 
-    task.status = "approved"
-    task.approver_id = approver.id
-    task.approved_at = datetime.utcnow()
-    task.reason = reason or task.reason
+        locked_task.status = "approved"
+        locked_task.approver_id = approver.id
+        locked_task.approved_at = datetime.utcnow()
+        locked_task.reason = reason or locked_task.reason
 
-    tx.status = "approved"
-    tx.is_approved = True
-    apply_inventory_change(db, tx)
-    return task
+        tx.status = "approved"
+        tx.is_approved = True
+        apply_inventory_change(db, tx)
+        return locked_task
 
 
 def reject_task(
@@ -87,23 +105,31 @@ def reject_task(
     reason: str,
 ) -> ApprovalTask:
     """Reject a task without touching inventory."""
-    if task.status != "pending":
-        raise ValueError("This approval task has already been handled")
-    if task.requester_id == approver.id:
-        raise ValueError("You cannot approve your own request")
+    with acquire_entity_lock(f"approval:{task.id}"):
+        locked_task = (
+            _approval_query(db)
+            .filter(ApprovalTask.id == task.id)
+            .first()
+        )
+        if not locked_task:
+            raise ValueError("Approval task not found")
+        if locked_task.status != "pending":
+            raise ValueError("This approval task has already been handled")
+        if locked_task.requester_id == approver.id:
+            raise ValueError("You cannot approve your own request")
 
-    tx = task.transaction
-    if not tx:
-        raise ValueError("The linked transaction does not exist")
+        tx = locked_task.transaction
+        if not tx:
+            raise ValueError("The linked transaction does not exist")
 
-    task.status = "rejected"
-    task.approver_id = approver.id
-    task.approved_at = datetime.utcnow()
-    task.reason = reason or task.reason
+        locked_task.status = "rejected"
+        locked_task.approver_id = approver.id
+        locked_task.approved_at = datetime.utcnow()
+        locked_task.reason = reason or locked_task.reason
 
-    tx.status = "rejected"
-    tx.is_approved = False
-    return task
+        tx.status = "rejected"
+        tx.is_approved = False
+        return locked_task
 
 
 def get_approval_by_id(db: Session, approval_id: int) -> Optional[ApprovalTask]:

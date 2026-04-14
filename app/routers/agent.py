@@ -20,7 +20,7 @@ def agent_ask(
     current_user: User = Depends(get_current_user),
 ):
     """Single-turn deterministic agent endpoint."""
-    return AgentAskOut(**ask_agent(db, payload.question))
+    return AgentAskOut(**ask_agent(db, payload.question, current_user))
 
 
 @router.post("/chat", response_model=AgentChatOut)

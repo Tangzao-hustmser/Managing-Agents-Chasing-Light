@@ -107,6 +107,25 @@ def ensure_database_schema(bind_engine=None) -> None:
             "evidence_url": "ALTER TABLE transactions ADD COLUMN evidence_url VARCHAR(500) DEFAULT ''",
             "evidence_type": "ALTER TABLE transactions ADD COLUMN evidence_type VARCHAR(50) DEFAULT ''",
         }
+        alert_columns = {
+            "status": "ALTER TABLE alerts ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'",
+            "dedup_key": "ALTER TABLE alerts ADD COLUMN dedup_key VARCHAR(160) NOT NULL DEFAULT ''",
+            "last_seen_at": "ALTER TABLE alerts ADD COLUMN last_seen_at DATETIME",
+            "occurrence_count": "ALTER TABLE alerts ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1",
+            "acknowledged_at": "ALTER TABLE alerts ADD COLUMN acknowledged_at DATETIME",
+            "acknowledged_by_user_id": "ALTER TABLE alerts ADD COLUMN acknowledged_by_user_id INTEGER",
+            "resolved_at": "ALTER TABLE alerts ADD COLUMN resolved_at DATETIME",
+            "resolved_by_user_id": "ALTER TABLE alerts ADD COLUMN resolved_by_user_id INTEGER",
+            "resolution_note": "ALTER TABLE alerts ADD COLUMN resolution_note TEXT DEFAULT ''",
+        }
+        follow_up_task_columns = {
+            "updated_at": "ALTER TABLE follow_up_tasks ADD COLUMN updated_at DATETIME",
+            "closed_at": "ALTER TABLE follow_up_tasks ADD COLUMN closed_at DATETIME",
+            "result": "ALTER TABLE follow_up_tasks ADD COLUMN result TEXT DEFAULT ''",
+            "outcome_score": "ALTER TABLE follow_up_tasks ADD COLUMN outcome_score FLOAT",
+            "escalation_level": "ALTER TABLE follow_up_tasks ADD COLUMN escalation_level INTEGER NOT NULL DEFAULT 0",
+            "escalated_at": "ALTER TABLE follow_up_tasks ADD COLUMN escalated_at DATETIME",
+        }
 
         with target_engine.begin() as conn:
             existing_columns = {
@@ -115,6 +134,22 @@ def ensure_database_schema(bind_engine=None) -> None:
             }
             for column_name, sql in transaction_columns.items():
                 if column_name not in existing_columns:
+                    conn.execute(text(sql))
+
+            existing_alert_columns = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(alerts)")).fetchall()
+            }
+            for column_name, sql in alert_columns.items():
+                if column_name not in existing_alert_columns:
+                    conn.execute(text(sql))
+
+            existing_follow_up_columns = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(follow_up_tasks)")).fetchall()
+            }
+            for column_name, sql in follow_up_task_columns.items():
+                if column_name not in existing_follow_up_columns:
                     conn.execute(text(sql))
 
             conn.execute(
@@ -156,6 +191,42 @@ def ensure_database_schema(bind_engine=None) -> None:
                     END
                     WHERE inventory_applied IS NULL
                        OR (inventory_applied = 0 AND status IN ('approved', 'returned'))
+                    """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                    UPDATE alerts
+                    SET status = 'open',
+                        dedup_key = COALESCE(dedup_key, ''),
+                        last_seen_at = COALESCE(last_seen_at, created_at),
+                        occurrence_count = COALESCE(occurrence_count, 1)
+                    WHERE status IS NULL OR status = ''
+                       OR dedup_key IS NULL
+                       OR last_seen_at IS NULL
+                       OR occurrence_count IS NULL
+                    """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                    UPDATE follow_up_tasks
+                    SET updated_at = COALESCE(updated_at, created_at)
+                    WHERE updated_at IS NULL
+                    """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                    UPDATE follow_up_tasks
+                    SET result = COALESCE(result, '')
+                    WHERE result IS NULL
                     """
                 )
             )

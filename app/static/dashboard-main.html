@@ -19,11 +19,13 @@
     .form{display:grid;gap:12px}.grid{grid-template-columns:repeat(2,1fr)}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-size:13px;font-weight:600}
     input,select,textarea{width:100%;padding:10px 12px;border:1px solid #cfe0ea;border-radius:10px;background:#fbfdff;font-size:14px}textarea{min-height:88px}
     table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid #e5eef2;vertical-align:top}th{font-size:12px;color:#617987;text-transform:uppercase;background:#f7fbfc}
-    .table-wrap{overflow:auto}.badge{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#edf4f8}.pending{background:#fff5db;color:#b7791f}.approved,.returned{background:#e8f8f1;color:#1f7a56}.rejected{background:#fdeaea;color:#c53030}.not_required{background:#edf4f8;color:#37576c}
+    .table-wrap{overflow:auto}.badge{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#edf4f8}.pending{background:#fff5db;color:#b7791f}.approved,.returned{background:#e8f8f1;color:#1f7a56}.rejected{background:#fdeaea;color:#c53030}.not_required{background:#edf4f8;color:#37576c}.open{background:#fff5db;color:#b7791f}.acknowledged{background:#e8f0ff;color:#2453a6}.resolved{background:#e8f8f1;color:#1f7a56}
     .approval-item,.alert-item,.chat-message{border:1px solid #d8e5ec;border-radius:14px;padding:12px 14px;background:#fff}.approval-item .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:13px;margin:8px 0}.suggestion{background:#eef8f7;border-radius:12px;padding:10px 12px;font-size:13px;margin:8px 0;line-height:1.7}
     .alert-item{border-left:5px solid #b7791f;background:#fff9ee}.alert-item.error{border-left-color:#c53030;background:#fff1f1}.chat-box{display:grid;gap:8px;height:280px;overflow:auto;padding:12px;border:1px solid #d8e5ec;border-radius:14px;background:#f7fbfc}
     .chat-message.user{justify-self:end;max-width:88%;background:#dfeeff;color:#214a87}.chat-message.assistant{max-width:88%}.tiny{font-size:12px;color:#617987;line-height:1.7}.empty{font-size:13px;color:#617987;padding:6px 2px}
     .inline-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#244458}.inline-check input{width:auto}
+    .focus-pulse{animation:focusPulse 1.25s ease}
+    @keyframes focusPulse{0%{box-shadow:0 0 0 0 rgba(15,76,129,.25)}45%{box-shadow:0 0 0 6px rgba(15,76,129,.14)}100%{box-shadow:0 10px 24px rgba(24,52,71,.06)}}
     @media (max-width:1100px){.stats{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}}@media (max-width:720px){.stats,.grid,.approval-item .meta{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
@@ -54,8 +56,38 @@
       <div class="stack">
         <section class="card">
           <h2>资源概览</h2>
-          <div class="muted" style="margin-bottom:12px;">管理员可点击资源行快速带入编辑表单。</div>
-          <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>可用 / 总量</th><th>位置</th><th>状态</th></tr></thead><tbody id="resources-tbody"></tbody></table></div>
+          <div class="muted" style="margin-bottom:8px;">管理员可点击“编辑”自动定位到下方“资源管理”并预填表单；误删恢复入口也在该区块。</div>
+          <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>子类</th><th>可用 / 总量</th><th>位置</th><th>状态</th><th>操作</th></tr></thead><tbody id="resources-tbody"></tbody></table></div>
+        </section>
+
+        <section class="card hidden" id="resource-management-section">
+          <h2 id="resource-management-title">资源管理</h2>
+          <div class="muted" style="margin-bottom:12px;">管理员可新增/编辑/归档资源；在“资源概览”点击“编辑”会自动跳转到这里并预填内容。</div>
+          <div id="resource-recovery-section" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px;border:1px solid #d8e5ec;border-radius:12px;background:#f7fbfc;">
+            <span class="tiny" style="font-weight:600;color:#1c3f55;">误操作恢复区</span>
+            <label class="inline-check" style="margin-left:2px;"><input id="show-archived-resources" type="checkbox" /> 显示归档资源</label>
+            <button class="btn-ghost" id="resource-undo-btn" type="button" onclick="undoLastDelete()" disabled>撤回上次删除</button>
+          </div>
+          <form class="form" id="resource-form">
+            <input id="resource-edit-id" type="hidden" />
+            <div class="grid">
+              <div class="field"><label for="resource-name">名称</label><input id="resource-name" type="text" required /></div>
+              <div class="field"><label for="resource-category">类型</label><select id="resource-category"><option value="device">设备</option><option value="material">耗材</option></select></div>
+              <div class="field"><label for="resource-subtype">子类</label><input id="resource-subtype" type="text" required /></div>
+              <div class="field"><label for="resource-location">位置</label><input id="resource-location" type="text" /></div>
+              <div class="field"><label for="resource-total">总量</label><input id="resource-total" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-available">可用量</label><input id="resource-available" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-unit-cost">单价</label><input id="resource-unit-cost" type="number" min="0" step="0.01" value="0" /></div>
+              <div class="field"><label for="resource-threshold">低库存阈值</label><input id="resource-threshold" type="number" min="0" value="1" /></div>
+              <div class="field"><label for="resource-status">状态</label><select id="resource-status"><option value="active">active</option><option value="maintenance">maintenance</option><option value="disabled">disabled</option></select></div>
+              <div class="field full"><label for="resource-description">描述</label><textarea id="resource-description"></textarea></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button class="btn-primary" type="submit">保存资源</button>
+              <button class="btn-ghost" type="button" onclick="resetResourceForm()">清空表单</button>
+              <button class="btn-danger" id="resource-delete-btn" type="button" onclick="deleteCurrentResource()" disabled>删除当前资源</button>
+            </div>
+          </form>
         </section>
 
         <section class="card" id="student-apply-section">
@@ -87,26 +119,6 @@
           <div class="table-wrap"><table><thead><tr><th>设备</th><th>借出时间</th><th>预计归还</th><th>状态</th><th>操作</th></tr></thead><tbody id="borrow-records-tbody"></tbody></table></div>
         </section>
 
-        <section class="card hidden" id="resource-management-section">
-          <h2>资源管理</h2>
-          <div class="muted" style="margin-bottom:12px;">管理员可新增/编辑资源基础信息，库存变化请走单独的库存调整表单。</div>
-          <form class="form" id="resource-form">
-            <input id="resource-edit-id" type="hidden" />
-            <div class="grid">
-              <div class="field"><label for="resource-name">名称</label><input id="resource-name" type="text" required /></div>
-              <div class="field"><label for="resource-category">类型</label><select id="resource-category"><option value="device">设备</option><option value="material">耗材</option></select></div>
-              <div class="field"><label for="resource-subtype">子类</label><input id="resource-subtype" type="text" required /></div>
-              <div class="field"><label for="resource-location">位置</label><input id="resource-location" type="text" /></div>
-              <div class="field"><label for="resource-total">总量</label><input id="resource-total" type="number" min="0" value="1" /></div>
-              <div class="field"><label for="resource-available">可用量</label><input id="resource-available" type="number" min="0" value="1" /></div>
-              <div class="field"><label for="resource-unit-cost">单价</label><input id="resource-unit-cost" type="number" min="0" step="0.01" value="0" /></div>
-              <div class="field"><label for="resource-threshold">低库存阈值</label><input id="resource-threshold" type="number" min="0" value="1" /></div>
-              <div class="field"><label for="resource-status">状态</label><select id="resource-status"><option value="active">active</option><option value="maintenance">maintenance</option><option value="disabled">disabled</option></select></div>
-              <div class="field full"><label for="resource-description">描述</label><textarea id="resource-description"></textarea></div>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="submit">保存资源</button><button class="btn-ghost" type="button" onclick="resetResourceForm()">清空表单</button></div>
-          </form>
-        </section>
       </div>
 
       <div class="stack">
@@ -130,6 +142,12 @@
           </form>
         </section>
 
+        <section class="card" id="follow-up-task-section">
+          <h2>异常闭环任务</h2>
+          <div class="muted" style="margin-bottom:12px;">用于追踪损坏、丢失、补录等后续任务。教师/管理员可看全局，学生看自己的任务。</div>
+          <div class="approval-list" id="follow-up-task-list"></div>
+        </section>
+
         <section class="card">
           <h2>系统预警</h2>
           <div class="muted" style="margin-bottom:12px;">轮询刷新会自动同步库存和审批状态。</div>
@@ -150,6 +168,9 @@
             <div class="tiny">只在当前浏览器保存，用于本次对话请求，不会写入服务器数据库。</div>
           </div>
           <div class="chat-box" id="chat-box"></div>
+          <div id="agent-meta-box" class="tiny" style="margin-top:10px;padding:10px 12px;border:1px solid #d8e5ec;border-radius:12px;background:#f7fbfc;">
+            暂无智能体执行细节。发送问题后会显示感知-推理-执行链路与动作状态。
+          </div>
           <div class="tiny" style="margin:10px 0;">支持库存查询、审批状态、空档推荐、治理建议与确认执行。</div>
           <div class="field"><label for="chat-input">提问</label><textarea id="chat-input" placeholder="例如：我明天下午想用 3D 打印机，有空档吗？"></textarea></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="button" onclick="sendChat()">发送问题</button><button class="btn-ghost" type="button" onclick="document.getElementById('chat-box').innerHTML=''">清空聊天框</button></div>
@@ -159,17 +180,19 @@
   </main>
 
   <script>
-    let currentUser=null,resources=[],transactions=[],approvals=[],alerts=[],sessionId='',poller=null;
+    let currentUser=null,resources=[],transactions=[],approvals=[],alerts=[],followUpTasks=[],sessionId='',poller=null,inventoryFormDirty=false,lastArchivedResourceId=null;
     const llmStorageKey='lab_llm_runtime_config';
     const actionLabels={borrow:'借用',consume:'领用',replenish:'补货',lost:'丢失登记',adjust:'库存调整'};
     const roleCanApply=r=>r==='student'||r==='teacher';
     const roleCanApprove=r=>r==='teacher'||r==='admin';
     const roleCanManageInventory=r=>r==='admin';
     const roleCanManageResources=r=>r==='admin';
+    const roleCanManageAlerts=r=>r==='teacher'||r==='admin';
     const authHeaders=()=>({'Content-Type':'application/json','Authorization':localStorage.getItem('token')});
     const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
     const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false}):'--';
     const badge=s=>`badge ${s}`;
+    const isFormInputElement=el=>!!el&&['INPUT','TEXTAREA','SELECT'].includes(el.tagName);
 
     async function api(url,opt={}){const res=await fetch(url,{...opt,headers:{...(opt.headers||{}),...authHeaders()}});const text=await res.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={detail:text||'请求失败'}}if(res.status===401){logout();throw new Error('登录已失效')}if(!res.ok)throw new Error(data.detail||data.message||'请求失败');return data;}
     function flash(msg,type='info'){const item=document.createElement('div');item.className=`flash ${type}`;item.innerText=msg;document.getElementById('flash-list').prepend(item);setTimeout(()=>item.remove(),3600);}
@@ -177,39 +200,121 @@
     function syncTopbar(){document.getElementById('user-pill').innerText=currentUser.real_name||currentUser.username;const role=document.getElementById('role-pill');role.innerText={student:'学生',teacher:'教师',admin:'管理员'}[currentUser.role]||currentUser.role;role.className=`pill ${currentUser.role}`;document.getElementById('subtitle').innerText={student:'提交申请不扣库存，审批通过后才扣减，归还时回补库存。',teacher:'拥有学生能力并可审批学生申请。',admin:'聚焦审批、资源管理和库存调整，不显示资源申请表单。'}[currentUser.role]||'统一申请、审批、库存和归还流程';}
     function syncRoleSections(){document.getElementById('student-apply-section').classList.toggle('hidden',!roleCanApply(currentUser.role));document.getElementById('borrow-records-section').classList.toggle('hidden',!roleCanApply(currentUser.role));document.getElementById('approval-center-section').classList.toggle('hidden',!roleCanApprove(currentUser.role));document.getElementById('inventory-adjustment-section').classList.toggle('hidden',!roleCanManageInventory(currentUser.role));document.getElementById('resource-management-section').classList.toggle('hidden',!roleCanManageResources(currentUser.role));document.getElementById('records-title').innerText=roleCanManageInventory(currentUser.role)?'库存流水':'我的申请';document.getElementById('records-note').innerText=roleCanManageInventory(currentUser.role)?'管理员查看全部库存相关流水与审计字段。':'后端直接返回资源名、审批状态和可归还标记。';document.getElementById('s3l').innerText=roleCanApprove(currentUser.role)?'待审批':'我的申请';document.getElementById('s4l').innerText=roleCanManageInventory(currentUser.role)?'库存流水':'我的借用';}
 
-    function syncApplicationFields(){const a=document.getElementById('tx-action').value;const borrow=a==='borrow';document.getElementById('borrow-time-field').classList.toggle('hidden',!borrow);document.getElementById('expected-return-field').classList.toggle('hidden',!borrow);document.getElementById('consume-quantity-field').classList.toggle('hidden',borrow);const list=resources.filter(r=>borrow?r.category==='device':r.category==='material');document.getElementById('tx-resource-id').innerHTML=list.length?list.map(r=>`<option value="${r.id}">${esc(r.name)}（可用 ${r.available_count}/${r.total_count}）</option>`).join(''):'<option value="">暂无可选资源</option>';}
+    function syncApplicationFields(){const a=document.getElementById('tx-action').value;const borrow=a==='borrow';document.getElementById('borrow-time-field').classList.toggle('hidden',!borrow);document.getElementById('expected-return-field').classList.toggle('hidden',!borrow);document.getElementById('consume-quantity-field').classList.toggle('hidden',borrow);const list=resources.filter(r=>r.status!=='disabled').filter(r=>borrow?r.category==='device':r.category==='material');document.getElementById('tx-resource-id').innerHTML=list.length?list.map(r=>`<option value="${r.id}">${esc(r.name)} / ${esc(r.subtype)}（可用 ${r.available_count}/${r.total_count}）</option>`).join(''):'<option value="">暂无可选资源</option>';}
     function syncAdjustForm(id){const r=resources.find(x=>x.id===Number(id));if(!r)return;document.getElementById('adjust-total-count').value=r.total_count;document.getElementById('adjust-available-count').value=r.available_count;}
-    function resetResourceForm(){document.getElementById('resource-form').reset();document.getElementById('resource-edit-id').value='';document.getElementById('resource-total').value='1';document.getElementById('resource-available').value='1';document.getElementById('resource-unit-cost').value='0';document.getElementById('resource-threshold').value='1';document.getElementById('resource-status').value='active';}
-    function fillResourceForm(id){const r=resources.find(x=>x.id===Number(id));if(!r)return;document.getElementById('resource-edit-id').value=r.id;document.getElementById('resource-name').value=r.name;document.getElementById('resource-category').value=r.category;document.getElementById('resource-subtype').value=r.subtype;document.getElementById('resource-location').value=r.location;document.getElementById('resource-total').value=r.total_count;document.getElementById('resource-available').value=r.available_count;document.getElementById('resource-unit-cost').value=r.unit_cost;document.getElementById('resource-threshold').value=r.min_threshold;document.getElementById('resource-status').value=r.status;document.getElementById('resource-description').value=r.description||'';}
+    function shouldShowArchivedResources(){const box=document.getElementById('show-archived-resources');return !!(box&&box.checked&&roleCanManageResources(currentUser.role));}
+    function syncUndoButton(){const undoBtn=document.getElementById('resource-undo-btn');if(undoBtn)undoBtn.disabled=!lastArchivedResourceId;}
+    function highlightResourceManagementPanel(){const section=document.getElementById('resource-management-section');if(!section||section.classList.contains('hidden'))return;section.classList.remove('focus-pulse');void section.offsetWidth;section.classList.add('focus-pulse');setTimeout(()=>section.classList.remove('focus-pulse'),1300);}
+    function resetResourceForm(){document.getElementById('resource-form').reset();document.getElementById('resource-edit-id').value='';document.getElementById('resource-total').value='1';document.getElementById('resource-available').value='1';document.getElementById('resource-unit-cost').value='0';document.getElementById('resource-threshold').value='1';document.getElementById('resource-status').value='active';document.getElementById('resource-delete-btn').disabled=true;syncUndoButton();}
+    function fillResourceForm(id,options={}){const r=resources.find(x=>x.id===Number(id));if(!r)return;document.getElementById('resource-edit-id').value=r.id;document.getElementById('resource-name').value=r.name;document.getElementById('resource-category').value=r.category;document.getElementById('resource-subtype').value=r.subtype;document.getElementById('resource-location').value=r.location;document.getElementById('resource-total').value=r.total_count;document.getElementById('resource-available').value=r.available_count;document.getElementById('resource-unit-cost').value=r.unit_cost;document.getElementById('resource-threshold').value=r.min_threshold;document.getElementById('resource-status').value=r.status;document.getElementById('resource-description').value=r.description||'';document.getElementById('resource-delete-btn').disabled=r.status==='disabled';if(options.scrollToForm!==false){document.getElementById('resource-management-section')?.scrollIntoView({behavior:'smooth',block:'start'});highlightResourceManagementPanel();}if(options.focusName!==false)document.getElementById('resource-name')?.focus();if(options.showHint!==false)flash(`已在“资源管理”预填资源「${r.name}」，请确认后点击“保存资源”。`,'success');}
+    async function deleteCurrentResource(){const id=document.getElementById('resource-edit-id').value;if(!id){flash('请先选择要删除的资源。','error');return;}const r=resources.find(x=>String(x.id)===String(id));const ok=confirm(`确认删除资源「${r?r.name:id}」？`);if(!ok)return;try{await api(`/resources/${id}`,{method:'DELETE'});lastArchivedResourceId=Number(id);syncUndoButton();flash('资源已删除（归档），可点击“撤回上次删除”快速恢复。','success');resetResourceForm();await refreshAll()}catch(err){flash(`删除资源失败：${err.message}`,'error')}}
+    async function restoreResource(id){try{await api(`/resources/${id}/restore`,{method:'POST'});if(Number(id)===Number(lastArchivedResourceId))lastArchivedResourceId=null;syncUndoButton();flash('资源已恢复。','success');await refreshAll()}catch(err){flash(`恢复资源失败：${err.message}`,'error')}}
+    async function undoLastDelete(){if(!lastArchivedResourceId){flash('暂无可撤回的删除操作。','error');return;}await restoreResource(lastArchivedResourceId);}
 
-    function renderResources(){const body=document.getElementById('resources-tbody');body.innerHTML=resources.length?'':'<tr><td colspan="5" class="empty">暂无资源</td></tr>';resources.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.name)}</td><td>${r.category==='device'?'设备':'耗材'}</td><td>${r.available_count} / ${r.total_count}</td><td>${esc(r.location)}</td><td>${esc(r.status)}</td>`;if(roleCanManageResources(currentUser.role))tr.onclick=()=>fillResourceForm(r.id);body.appendChild(tr)});syncApplicationFields();document.getElementById('adjust-resource-id').innerHTML=resources.map(r=>`<option value="${r.id}">${esc(r.name)}（当前 ${r.available_count}/${r.total_count}）</option>`).join('');if(resources.length&&roleCanManageInventory(currentUser.role))syncAdjustForm(document.getElementById('adjust-resource-id').value||resources[0].id);}
+    function renderResources(){const body=document.getElementById('resources-tbody');body.innerHTML=resources.length?'':'<tr><td colspan="7" class="empty">暂无资源</td></tr>';resources.forEach(r=>{const tr=document.createElement('tr');let actionHtml='--';if(roleCanManageResources(currentUser.role)){actionHtml=r.status==='disabled'?`<button class="btn-primary" type="button" onclick="restoreResource(${r.id})">恢复</button>`:`<button class="btn-ghost" type="button" onclick="fillResourceForm(${r.id})">编辑</button> <button class="btn-danger" type="button" onclick="deleteResource(${r.id})">删除</button>`;}tr.innerHTML=`<td>${esc(r.name)}</td><td>${r.category==='device'?'设备':'耗材'}</td><td>${esc(r.subtype||'--')}</td><td>${r.available_count} / ${r.total_count}</td><td>${esc(r.location)}</td><td>${esc(r.status)}</td><td>${actionHtml}</td>`;body.appendChild(tr)});syncApplicationFields();const activeResources=resources.filter(r=>r.status!=='disabled');const adjustSelect=document.getElementById('adjust-resource-id');const prevSelected=adjustSelect.value;adjustSelect.innerHTML=activeResources.map(r=>`<option value="${r.id}">${esc(r.name)} / ${esc(r.subtype)}（当前 ${r.available_count}/${r.total_count}）</option>`).join('');const hasPrev=activeResources.some(r=>String(r.id)===String(prevSelected));if(hasPrev)adjustSelect.value=String(prevSelected);if(activeResources.length&&roleCanManageInventory(currentUser.role)&&!inventoryFormDirty){const selectedId=adjustSelect.value||String(activeResources[0].id);adjustSelect.value=selectedId;syncAdjustForm(selectedId);}syncUndoButton();}
     function renderRecords(){const rows=roleCanManageInventory(currentUser.role)?transactions.slice(0,12):transactions.filter(t=>['borrow','consume'].includes(t.action)).slice(0,12);const body=document.getElementById('records-tbody');body.innerHTML=rows.length?'':'<tr><td colspan="6" class="empty">暂无记录</td></tr>';rows.forEach(t=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${fmt(t.created_at)}</td><td>${esc(actionLabels[t.action]||t.action)}</td><td>${esc(t.resource_name)}</td><td>${t.quantity}</td><td><span class="${badge(t.status)}">${esc(t.status)}</span></td><td><span class="${badge(t.approval_status)}">${esc(t.approval_status)}</span></td>`;body.appendChild(tr)});}
     function renderBorrows(){const rows=transactions.filter(t=>t.action==='borrow');const body=document.getElementById('borrow-records-tbody');body.innerHTML=rows.length?'':'<tr><td colspan="5" class="empty">暂无借用记录</td></tr>';rows.forEach(t=>{const borrowInFuture=t.borrow_time&&new Date(t.borrow_time)>new Date();const action=t.can_return?`<button class="btn-primary" type="button" onclick="returnBorrow(${t.id})">归还</button>`:(borrowInFuture?'<span class="tiny">未到借出时间，暂不可归还</span>':'<span class="tiny">仅本人进行中借用可归还</span>');const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(t.resource_name)}</td><td>${fmt(t.borrow_time)}</td><td>${fmt(t.expected_return_time)}</td><td><span class="${badge(t.status)}">${esc(t.status)}</span></td><td>${action}</td>`;body.appendChild(tr)});}
     function renderApprovals(){const box=document.getElementById('approval-list');box.innerHTML=approvals.length?'':'<div class="empty">当前没有待审批申请。</div>';approvals.forEach(a=>{const div=document.createElement('div');div.className='approval-item';div.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><strong>${esc(a.requester_name)}</strong><div class="tiny">${esc(a.requester_role)} · ${fmt(a.created_at)}</div></div><span class="${badge(a.status)}">${esc(a.status)}</span></div><div class="meta"><div><strong>资源：</strong>${esc(a.resource_name)}</div><div><strong>动作：</strong>${esc(actionLabels[a.action]||a.action)}</div><div><strong>数量：</strong>${a.quantity}</div><div><strong>备注：</strong>${esc(a.note||'无')}</div></div><div class="suggestion">${esc(a.suggestion)}</div><div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn-primary" type="button" onclick="reviewApproval(${a.id},true)">通过</button><button class="btn-danger" type="button" onclick="reviewApproval(${a.id},false)">拒绝</button></div>`;box.appendChild(div)});}
-    function renderAlerts(){const box=document.getElementById('alerts-box');box.innerHTML=alerts.length?'':'<div class="empty">暂无预警。</div>';alerts.slice(0,8).forEach(a=>{const div=document.createElement('div');div.className=`alert-item ${a.level==='error'?'error':''}`;div.innerHTML=`<strong>${esc(a.type)}</strong><br>${esc(a.message)}<br><span class="tiny">${fmt(a.created_at)}</span>`;box.appendChild(div)});}
+    function renderFollowUpTasks(){const box=document.getElementById('follow-up-task-list');box.innerHTML=followUpTasks.length?'':'<div class="empty">当前没有未完成闭环任务。</div>';followUpTasks.forEach(t=>{const statusLabel={open:'待处理',in_progress:'处理中',done:'已完成',cancelled:'已取消'}[t.status]||t.status;const updateButtons=t.can_update&&t.status!=='done'?`<button class="btn-primary" type="button" onclick="updateFollowUpTask(${t.id},'in_progress')">标记处理中</button><button class="btn-ghost" type="button" onclick="updateFollowUpTask(${t.id},'done')">标记完成</button>`:'<span class="tiny">仅负责人或教师/管理员可更新</span>';const div=document.createElement('div');div.className='approval-item';div.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><strong>#${t.id} ${esc(t.title)}</strong><div class="tiny">${esc(t.task_type)} · 资源 ${esc(t.resource_name)} · 截止 ${fmt(t.due_at)}</div></div><span class="${badge(t.status)}">${esc(statusLabel)}</span></div><div class="tiny" style="margin:8px 0;">负责人：${esc(t.assigned_user_name||'未指派')}；说明：${esc(t.description||'--')}</div><div style="display:flex;gap:10px;flex-wrap:wrap;">${updateButtons}</div>`;box.appendChild(div)});}
+    function renderAlerts(){const box=document.getElementById('alerts-box');box.innerHTML=alerts.length?'':'<div class="empty">暂无预警。</div>';alerts.slice(0,12).forEach(a=>{const div=document.createElement('div');div.className=`alert-item ${a.level==='error'?'error':''}`;const canManage=roleCanManageAlerts(currentUser.role);const statusLabel={open:'待处理',acknowledged:'已确认',resolved:'已消除'}[a.status]||a.status;const actions=canManage?`${a.status==='open'?`<button class="btn-ghost" type="button" onclick="acknowledgeAlert(${a.id})">确认</button>`:''}<button class="btn-danger" type="button" onclick="resolveAlert(${a.id})">消除</button>`:'<span class="tiny">仅教师/管理员可确认或消除</span>';div.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><strong>${esc(a.type)}</strong><span class="${badge(a.status)}">${esc(statusLabel)}</span></div><div style="margin:6px 0 8px 0;">${esc(a.message)}</div><div class="tiny">${fmt(a.created_at)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">${actions}</div>`;box.appendChild(div)});}
     function stats(){const low=resources.filter(r=>r.available_count<=r.min_threshold).length;const mine=transactions.filter(t=>['borrow','consume'].includes(t.action)).length;const active=transactions.filter(t=>t.action==='borrow'&&t.status==='approved'&&!t.return_time).length;document.getElementById('s1').innerText=resources.length;document.getElementById('s2').innerText=low;document.getElementById('s3').innerText=roleCanApprove(currentUser.role)?approvals.length:mine;document.getElementById('s4').innerText=roleCanManageInventory(currentUser.role)?transactions.length:active;}
 
-    async function loadResources(){resources=await api('/resources');renderResources();stats();}
+    async function loadResources(){const includeDisabled=shouldShowArchivedResources();resources=await api(`/resources${includeDisabled?'?include_disabled=true':''}`);renderResources();stats();}
     async function loadTransactions(){transactions=await api('/transactions');renderRecords();renderBorrows();stats();}
     async function loadApprovals(){if(!roleCanApprove(currentUser.role)){approvals=[];stats();return;}approvals=await api('/approvals?status=pending');renderApprovals();stats();}
+    async function loadFollowUpTasks(){const assigned=roleCanApprove(currentUser.role)||roleCanManageInventory(currentUser.role)?'all':'me';followUpTasks=await api(`/follow-up-tasks?status=all&assigned=${assigned}&limit=20`);renderFollowUpTasks();}
     async function loadAlerts(){alerts=await api('/alerts');renderAlerts();}
-    async function refreshAll(manual=false){try{await Promise.all([loadResources(),loadTransactions(),loadApprovals(),loadAlerts()]);if(manual)flash('页面数据已刷新。','success')}catch(e){flash(`刷新失败：${e.message}`,'error')}}
+    async function refreshAll(manual=false){try{await Promise.all([loadResources(),loadTransactions(),loadApprovals(),loadFollowUpTasks(),loadAlerts()]);if(manual)flash('页面数据已刷新。','success')}catch(e){flash(`刷新失败：${e.message}`,'error')}}
 
     async function submitApplication(e){e.preventDefault();const action=document.getElementById('tx-action').value;const payload={resource_id:Number(document.getElementById('tx-resource-id').value),action,quantity:action==='consume'?Number(document.getElementById('consume-quantity').value||1):1,purpose:document.getElementById('tx-purpose').value.trim(),note:document.getElementById('tx-note').value.trim()};if(action==='borrow'){payload.borrow_time=document.getElementById('borrow-time').value;payload.expected_return_time=document.getElementById('expected-return-time').value}try{await api('/transactions',{method:'POST',body:JSON.stringify(payload)});flash('申请已提交，待审批。','success');document.getElementById('application-form').reset();document.getElementById('consume-quantity').value='1';syncApplicationFields();await refreshAll()}catch(err){flash(`申请失败，库存未变化：${err.message}`,'error')}}
     async function reviewApproval(id,approved){const reason=prompt(approved?'请输入通过说明（可留空）':'请输入拒绝原因',approved?'审批通过':'审批拒绝');if(reason===null)return;try{await api(`/approvals/${id}/approve`,{method:'POST',body:JSON.stringify({approved,reason})});flash(approved?'审批通过，库存已更新。':'审批拒绝，库存未变化。','success');await refreshAll()}catch(err){flash(`审批失败：${err.message}`,'error')}}
+    async function updateFollowUpTask(id,status){const note=prompt('可选：补充处理说明','')||'';try{await api(`/follow-up-tasks/${id}`,{method:'PATCH',body:JSON.stringify({status,note})});flash(`任务 #${id} 已更新为 ${status}。`,'success');await refreshAll()}catch(err){flash(`任务更新失败：${err.message}`,'error')}}
+    async function acknowledgeAlert(id){const note=prompt('可选：确认说明','')||'';try{await api(`/alerts/${id}/acknowledge`,{method:'POST',body:JSON.stringify({note})});flash(`预警 #${id} 已确认。`,'success');await refreshAll()}catch(err){flash(`预警确认失败：${err.message}`,'error')}}
+    async function resolveAlert(id){const note=prompt('可选：消除说明','')||'';try{await api(`/alerts/${id}/resolve`,{method:'POST',body:JSON.stringify({note})});flash(`预警 #${id} 已消除。`,'success');await refreshAll()}catch(err){flash(`预警消除失败：${err.message}`,'error')}}
     async function returnBorrow(id){const tx=transactions.find(x=>x.id===Number(id));if(!tx){flash('未找到借用记录。','error');return;}if(tx.borrow_time&&new Date(tx.borrow_time)>new Date()){flash('未到借出时间，暂不可归还。','error');return;}const rawCondition=prompt('请输入归还状态：good / damaged / partial_lost','good');if(rawCondition===null)return;const condition=rawCondition.trim().toLowerCase();if(!['good','damaged','partial_lost'].includes(condition)){flash('归还状态无效，请输入 good / damaged / partial_lost。','error');return;}const note=prompt('可选：补充归还说明','')||'';const payload={condition_return:condition,note,return_time:new Date().toISOString()};if(condition==='partial_lost'){const rawLost=prompt(`请输入丢失数量（1-${tx.quantity}）`,'1');if(rawLost===null)return;const lostQuantity=Number(rawLost);if(!Number.isInteger(lostQuantity)||lostQuantity<1||lostQuantity>Number(tx.quantity)){flash('丢失数量无效。','error');return;}payload.lost_quantity=lostQuantity;}try{await api(`/transactions/${id}/return`,{method:'PATCH',body:JSON.stringify(payload)});flash(condition==='good'?'归还成功，库存已回补。':'归还已提交，状态已更新。','success');await refreshAll()}catch(err){flash(`归还失败：${err.message}`,'error')}}
     async function saveResource(e){e.preventDefault();const id=document.getElementById('resource-edit-id').value;const payload={name:document.getElementById('resource-name').value.trim(),category:document.getElementById('resource-category').value,subtype:document.getElementById('resource-subtype').value.trim(),location:document.getElementById('resource-location').value.trim(),total_count:Number(document.getElementById('resource-total').value),available_count:Number(document.getElementById('resource-available').value),unit_cost:Number(document.getElementById('resource-unit-cost').value||0),min_threshold:Number(document.getElementById('resource-threshold').value||0),status:document.getElementById('resource-status').value,description:document.getElementById('resource-description').value.trim()};try{if(id){await api(`/resources/${id}`,{method:'PATCH',body:JSON.stringify(payload)});flash('资源信息已更新。','success')}else{await api('/resources',{method:'POST',body:JSON.stringify(payload)});flash('资源已创建。','success')}resetResourceForm();await refreshAll()}catch(err){flash(`资源保存失败：${err.message}`,'error')}}
-    async function adjustInventory(e){e.preventDefault();const resourceId=Number(document.getElementById('adjust-resource-id').value);const payload={target_total_count:Number(document.getElementById('adjust-total-count').value),target_available_count:Number(document.getElementById('adjust-available-count').value),reason:document.getElementById('adjust-reason').value.trim()};try{await api(`/resources/${resourceId}/inventory-adjustments`,{method:'POST',body:JSON.stringify(payload)});flash('库存调整已记录，审计字段已更新。','success');document.getElementById('inventory-adjustment-form').reset();await refreshAll()}catch(err){flash(`库存调整失败：${err.message}`,'error')}}
+    async function deleteResource(id){fillResourceForm(id,{scrollToForm:false,focusName:false,showHint:false});await deleteCurrentResource();}
+    async function adjustInventory(e){e.preventDefault();const resourceId=Number(document.getElementById('adjust-resource-id').value);const reason=document.getElementById('adjust-reason').value.trim()||'管理员库存修正';const payload={target_total_count:Number(document.getElementById('adjust-total-count').value),target_available_count:Number(document.getElementById('adjust-available-count').value),reason};try{await api(`/resources/${resourceId}/inventory-adjustments`,{method:'POST',body:JSON.stringify(payload)});flash('库存调整已记录，审计字段已更新。','success');document.getElementById('inventory-adjustment-form').reset();inventoryFormDirty=false;await refreshAll()}catch(err){flash(`库存调整失败：${err.message}`,'error')}}
     function getLlmOptionsFromUI(){const enabled=document.getElementById('use-custom-llm').checked;const baseUrl=document.getElementById('llm-base-url').value.trim();const model=document.getElementById('llm-model').value.trim();const apiKey=document.getElementById('llm-api-key').value.trim();const timeout=Number(document.getElementById('llm-timeout').value||30);if(!enabled)return null;return{enabled:true,base_url:baseUrl,model,api_key:apiKey,timeout};}
     function persistLlmOptions(){const payload={enabled:document.getElementById('use-custom-llm').checked,base_url:document.getElementById('llm-base-url').value.trim(),model:document.getElementById('llm-model').value.trim(),api_key:document.getElementById('llm-api-key').value.trim(),timeout:Number(document.getElementById('llm-timeout').value||30)};localStorage.setItem(llmStorageKey,JSON.stringify(payload));}
     function restoreLlmOptions(){try{const raw=localStorage.getItem(llmStorageKey);if(!raw)return;const cfg=JSON.parse(raw);document.getElementById('use-custom-llm').checked=!!cfg.enabled;document.getElementById('llm-base-url').value=cfg.base_url||'';document.getElementById('llm-model').value=cfg.model||'';document.getElementById('llm-api-key').value=cfg.api_key||'';document.getElementById('llm-timeout').value=cfg.timeout||30;}catch{}}
     async function sendChat(){const input=document.getElementById('chat-input');const msg=input.value.trim();if(!msg)return;appendChat('user',msg);input.value='';const payload={message:msg,session_id:sessionId||null};const llmOptions=getLlmOptionsFromUI();if(llmOptions){payload.llm_options=llmOptions;}try{const data=await api('/agent/chat',{method:'POST',body:JSON.stringify(payload)});sessionId=data.session_id;appendChat('assistant',data.reply||'当前无法获取回复。');if(llmOptions&&!data.used_model)appendChat('assistant','提示：本次未成功调用大模型，可能是 Base URL / Model / API Key 配置不完整。');}catch(err){appendChat('assistant',`请求失败：${err.message}`)}}
     function appendChat(role,text){const div=document.createElement('div');div.className=`chat-message ${role}`;div.innerText=text;const box=document.getElementById('chat-box');box.appendChild(div);box.scrollTop=box.scrollHeight;}
 
-    function bind(){document.getElementById('tx-action').addEventListener('change',syncApplicationFields);document.getElementById('application-form').addEventListener('submit',submitApplication);document.getElementById('resource-form').addEventListener('submit',saveResource);document.getElementById('inventory-adjustment-form').addEventListener('submit',adjustInventory);document.getElementById('adjust-resource-id').addEventListener('change',e=>syncAdjustForm(e.target.value));document.getElementById('chat-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')sendChat()});['use-custom-llm','llm-base-url','llm-model','llm-api-key','llm-timeout'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',persistLlmOptions);if(el&&id==='llm-api-key')el.addEventListener('input',persistLlmOptions);});}
-    function startPolling(){if(poller)clearInterval(poller);poller=setInterval(()=>refreshAll(false),8000);}
-    async function init(){const token=localStorage.getItem('token');const user=localStorage.getItem('user');if(!token||!user){window.location.href='/login';return;}try{currentUser=JSON.parse(user);syncTopbar();syncRoleSections();bind();restoreLlmOptions();syncApplicationFields();appendChat('assistant','可以问我库存、审批、空档推荐、治理建议；如需模型推理，请先勾选并填写你的 API 配置。');await refreshAll();startPolling()}catch{logout()}}
+    function bind(){document.getElementById('tx-action').addEventListener('change',syncApplicationFields);document.getElementById('application-form').addEventListener('submit',submitApplication);document.getElementById('resource-form').addEventListener('submit',saveResource);document.getElementById('inventory-adjustment-form').addEventListener('submit',adjustInventory);document.getElementById('adjust-resource-id').addEventListener('change',e=>{inventoryFormDirty=false;syncAdjustForm(e.target.value)});const archivedSwitch=document.getElementById('show-archived-resources');if(archivedSwitch)archivedSwitch.addEventListener('change',()=>refreshAll(true));['adjust-total-count','adjust-available-count','adjust-reason'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',()=>{inventoryFormDirty=true;});});document.getElementById('chat-input').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')sendChat()});['use-custom-llm','llm-base-url','llm-model','llm-api-key','llm-timeout'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',persistLlmOptions);if(el&&id==='llm-api-key')el.addEventListener('input',persistLlmOptions);});}
+    function startPolling(){if(poller)clearInterval(poller);poller=setInterval(()=>{if(inventoryFormDirty)return;if(isFormInputElement(document.activeElement))return;refreshAll(false);},8000);}
+    async function init(){const token=localStorage.getItem('token');const user=localStorage.getItem('user');if(!token||!user){window.location.href='/login';return;}try{currentUser=JSON.parse(user);syncTopbar();syncRoleSections();bind();restoreLlmOptions();syncApplicationFields();syncUndoButton();appendChat('assistant','可以问我库存、审批、空档推荐、治理建议与闭环任务；如需模型推理，请先勾选并填写你的 API 配置。');await refreshAll();startPolling()}catch{logout()}}
     window.addEventListener('load',init);
+  </script>
+
+  <script>
+    let latestPendingAction=null;
+
+    function renderAgentMeta(data){
+      const box=document.getElementById('agent-meta-box');
+      if(!box)return;
+      const steps=Array.isArray(data.analysis_steps)?data.analysis_steps:[];
+      const stepHtml=steps.length?steps.map((s,i)=>`<div>${i+1}. ${esc(s)}</div>`).join(''):'<div>暂无推理步骤。</div>';
+      const executed=Array.isArray(data.executed_tools)?data.executed_tools:[];
+      const executedHtml=executed.length?`<div style="margin-top:8px;"><strong>执行结果</strong>${executed.map(t=>`<div>- ${esc(t.name||'tool')}：${esc(t.summary||t.status||'completed')}</div>`).join('')}</div>`:'';
+      const pending=data.pending_action;
+      const pendingHtml=data.confirmation_required&&pending?`<div style="margin-top:8px;"><strong>待确认动作</strong><div>${esc(pending.title||pending.name||'pending action')}</div><div class="tiny" style="margin-top:4px;">发送“确认”或点击下方按钮执行；发送“取消”撤销。</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><button class="btn-primary" type="button" onclick="confirmPendingActionQuick()">确认执行</button><button class="btn-danger" type="button" onclick="cancelPendingActionQuick()">取消执行</button></div></div>`:'';
+      box.innerHTML=`<strong>智能体执行链路</strong><div style="margin-top:6px;">${stepHtml}</div>${pendingHtml}${executedHtml}`;
+    }
+
+    async function sendAgentControlMessage(message,options={}){
+      const payload={message,session_id:sessionId||null};
+      if(options.confirm===true)payload.confirm=true;
+      if(options.confirmation_token)payload.confirmation_token=options.confirmation_token;
+      const data=await api('/agent/chat',{method:'POST',body:JSON.stringify(payload)});
+      sessionId=data.session_id;
+      latestPendingAction=data.pending_action||null;
+      appendChat('assistant',data.reply||'当前无法获取回复。');
+      renderAgentMeta(data);
+      if(Array.isArray(data.executed_tools)&&data.executed_tools.length){
+        flash('智能体动作已执行。','success');
+      }
+    }
+
+    window.confirmPendingActionQuick=async function(){
+      if(!sessionId){flash('当前没有可确认的会话。','error');return;}
+      try{
+        await sendAgentControlMessage('确认',{confirm:true,confirmation_token:latestPendingAction?.confirmation_token});
+      }catch(err){
+        appendChat('assistant',`请求失败：${err.message}`);
+      }
+    };
+
+    window.cancelPendingActionQuick=async function(){
+      if(!sessionId){flash('当前没有可取消的会话。','error');return;}
+      try{
+        await sendAgentControlMessage('取消');
+      }catch(err){
+        appendChat('assistant',`请求失败：${err.message}`);
+      }
+    };
+
+    const originalSendChat=window.sendChat;
+    window.sendChat=async function(){
+      const input=document.getElementById('chat-input');
+      const msg=input.value.trim();
+      if(!msg)return;
+      appendChat('user',msg);
+      input.value='';
+      const payload={message:msg,session_id:sessionId||null};
+      const llmOptions=getLlmOptionsFromUI();
+      if(llmOptions)payload.llm_options=llmOptions;
+      try{
+        const data=await api('/agent/chat',{method:'POST',body:JSON.stringify(payload)});
+        sessionId=data.session_id;
+        latestPendingAction=data.pending_action||null;
+        appendChat('assistant',data.reply||'当前无法获取回复。');
+        renderAgentMeta(data);
+        if(llmOptions&&!data.used_model)appendChat('assistant','提示：本次未成功调用大模型，可能是 Base URL / Model / API Key 配置不完整。');
+      }catch(err){
+        appendChat('assistant',`请求失败：${err.message}`);
+      }
+    };
   </script>
 </body>
 </html>

@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-04-12T11:00:35.044601Z",
+  "all_ok": true,
+  "kpi_days": 30,
+  "artifacts": {
+    "agent_eval_latest_json": "docs\\reports\\agent_eval_latest.json",
+    "kpi_dashboard_latest_json": "docs\\reports\\kpi_dashboard_latest.json",
+    "defense_reports_summary_json": "docs\\reports\\defense_reports_summary.json",
+    "finals_release_check_json": "docs\\reports\\finals_release_check.json"
+  },
+  "release_checks": {
+    "passed_checks": 7,
+    "total_checks": 7
+  }
+}

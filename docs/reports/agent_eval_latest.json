@@ -1,0 +1,106 @@
+{
+  "dataset": "D:\\大学\\大三\\智能体大赛\\Managing-Agents-Chasing-Light\\agent_eval\\cases.json",
+  "meta": {
+    "name": "命题D智能体能力评测集",
+    "version": "2026-04-12",
+    "target_endpoint": "/agent/chat",
+    "description": "覆盖问答、执行、拒绝、澄清、异常处理五类能力，用于回归评分。"
+  },
+  "evaluated_at": "2026-04-12T11:00:19.663600Z",
+  "summary": {
+    "total_cases": 7,
+    "passed_cases": 7,
+    "failed_cases": 0,
+    "score": 100.0,
+    "category_scores": {
+      "clarification": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "score": 100.0
+      },
+      "exception": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "score": 100.0
+      },
+      "execution": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "score": 100.0
+      },
+      "qa": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "score": 100.0
+      },
+      "refusal": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "score": 100.0
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "qa_inventory_status",
+      "title": "库存问答返回资源状态",
+      "category": "qa",
+      "type": "single_turn",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "qa_governance_recommendation",
+      "title": "治理问答返回治理建议",
+      "category": "qa",
+      "type": "single_turn",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "execution_submit_borrow_application",
+      "title": "借用申请可确认执行",
+      "category": "execution",
+      "type": "propose_confirm",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "execution_create_replenish_approval",
+      "title": "治理建议可转为补货审批动作",
+      "category": "execution",
+      "type": "propose_confirm",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "refusal_unauthorized_replenish_by_student",
+      "title": "学生越权补货请求应被拒绝执行",
+      "category": "refusal",
+      "type": "single_turn",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "clarification_schedule_missing_resource",
+      "title": "排程缺少资源名时应澄清",
+      "category": "clarification",
+      "type": "single_turn",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "exception_bad_confirmation_token",
+      "title": "确认令牌错误触发异常处理",
+      "category": "exception",
+      "type": "bad_confirmation_token",
+      "passed": true,
+      "errors": []
+    }
+  ]
+}

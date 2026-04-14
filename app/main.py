@@ -1,14 +1,19 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import ensure_database_schema
+from app.database import ensure_database_schema, get_db
 from app.routers import agent, alerts, analytics, approvals, auth, files, resources, scheduler, transactions
+from app.routers import audit_logs
 from app.routers import enhanced_agent, enhanced_analytics
+from app.routers import follow_up_tasks
+from app.routers import notifications
 from app.services.llm_service import check_llm_connectivity
+from app.services.readiness_service import build_readiness_report
 
 ensure_database_schema()
 
@@ -26,6 +31,9 @@ app.include_router(agent.router)
 app.include_router(scheduler.router)
 app.include_router(enhanced_agent.router)
 app.include_router(enhanced_analytics.router)
+app.include_router(follow_up_tasks.router)
+app.include_router(notifications.router)
+app.include_router(audit_logs.router)
 
 
 @app.get("/", tags=["system"])
@@ -56,3 +64,12 @@ def dashboard_main_page():
 def debug_llm_check():
     """Probe the configured LLM endpoint."""
     return check_llm_connectivity()
+
+
+@app.get("/system/readiness", tags=["diagnostics"])
+def system_readiness(
+    probe_llm: bool = Query(default=False, description="Whether to perform live LLM connectivity probe"),
+    db: Session = Depends(get_db),
+):
+    """Return a final-stage readiness report for demo and competition validation."""
+    return build_readiness_report(db, probe_llm=probe_llm)

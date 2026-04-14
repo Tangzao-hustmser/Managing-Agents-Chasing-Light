@@ -8,7 +8,6 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Alert,
     ApprovalTask,
     FollowUpTask,
     MaintenanceRecord,
@@ -17,7 +16,9 @@ from app.models import (
     Transaction,
     User,
 )
+from app.services.alert_service import emit_alert
 from app.services.auth_service import is_teacher_or_admin
+from app.services.evidence_policy_service import ensure_evidence_backfill_task
 from app.services.resource_item_service import (
     ensure_resource_item_capacity,
     get_transaction_items,
@@ -30,7 +31,7 @@ from app.services.resource_item_service import (
     sync_resource_available_count,
 )
 from app.services.rules_engine import run_inventory_rules, run_utilization_rules, run_waste_rules
-from app.services.time_slot_service import calculate_duration
+from app.services.time_slot_service import calculate_duration, to_utc_naive
 
 APPLICATION_ACTIONS = {"borrow", "consume"}
 DIRECT_ACTIONS = {"replenish", "lost", "adjust"}
@@ -62,7 +63,8 @@ def get_approval_status(tx: Transaction) -> str:
 
 def can_return_transaction(tx: Transaction, current_user: Optional[User]) -> bool:
     """Whether the current user can return this transaction."""
-    borrow_started = tx.borrow_time is None or tx.borrow_time <= datetime.utcnow()
+    borrow_time = to_utc_naive(tx.borrow_time)
+    borrow_started = borrow_time is None or borrow_time <= datetime.utcnow()
     return bool(
         current_user
         and tx.user_id == current_user.id
@@ -127,7 +129,9 @@ def build_approval_suggestion(task: ApprovalTask) -> str:
         return "Suggest reject: borrowing is only valid for device resources."
     if tx.action == "consume" and resource.category != "material":
         return "Suggest reject: consumption is only valid for material resources."
-    if tx.quantity > resource.available_count:
+    if tx.action == "replenish":
+        return "Suggest approve: replenishment request will increase available stock."
+    if tx.action in {"borrow", "consume"} and tx.quantity > resource.available_count:
         return "Suggest reject: current available inventory is not enough."
     if tx.action == "consume" and tx.quantity >= max(resource.min_threshold, 1) * 2:
         return "Suggest manual review: quantity is much higher than the low-stock threshold."
@@ -331,6 +335,16 @@ def apply_inventory_change(
     run_utilization_rules(db, resource)
     if tx.action in {"consume", "lost"}:
         run_waste_rules(db, resource, tx.action, tx.quantity)
+    if tx.action == "lost":
+        ensure_evidence_backfill_task(
+            db,
+            resource=resource,
+            transaction=tx,
+            evidence_url=tx.evidence_url or "",
+            evidence_type=tx.evidence_type or "",
+            scenario="报失登记",
+            assigned_user_id=tx.user_id,
+        )
     return tx
 
 
@@ -356,8 +370,9 @@ def apply_return(
     if not tx.resource:
         raise ValueError("Transaction resource is missing")
 
-    actual_return_time = return_time or datetime.utcnow()
-    if tx.borrow_time and actual_return_time < tx.borrow_time:
+    actual_return_time = to_utc_naive(return_time) or datetime.utcnow()
+    borrow_time = to_utc_naive(tx.borrow_time)
+    if borrow_time and actual_return_time < borrow_time:
         raise ValueError("return_time must be later than or equal to borrow_time")
 
     resource = tx.resource
@@ -443,9 +458,20 @@ def apply_return(
     else:
         raise ValueError("Unsupported return condition")
 
+    if condition_return in {"damaged", "partial_lost"}:
+        ensure_evidence_backfill_task(
+            db,
+            resource=resource,
+            transaction=tx,
+            evidence_url=evidence_url or "",
+            evidence_type=evidence_type or "",
+            scenario="异常归还",
+            assigned_user_id=(actor.id if actor else tx.user_id),
+        )
+
     tx.return_time = actual_return_time
     tx.condition_return = condition_return
-    tx.duration_minutes = calculate_duration(tx.borrow_time, tx.return_time) if tx.borrow_time else None
+    tx.duration_minutes = calculate_duration(borrow_time, tx.return_time) if borrow_time else None
     tx.return_inventory_before_available = before_available
     tx.return_inventory_after_available = resource.available_count
     tx.status = "returned"
@@ -460,20 +486,20 @@ def apply_return(
     run_utilization_rules(db, resource)
 
     if condition_return == "damaged":
-        db.add(
-            Alert(
-                level="warn",
-                type="return_exception",
-                message=f"Resource [{resource.name}] was returned damaged and moved to maintenance/quarantine.",
-            )
+        emit_alert(
+            db,
+            level="warn",
+            alert_type="return_exception",
+            message=f"Resource [{resource.name}] was returned damaged and moved to maintenance/quarantine.",
+            dedup_key=f"return_exception:resource:{resource.id}",
         )
     elif condition_return == "partial_lost":
-        db.add(
-            Alert(
-                level="error",
-                type="partial_loss",
-                message=f"Resource [{resource.name}] was returned with partial loss in transaction #{tx.id}.",
-            )
+        emit_alert(
+            db,
+            level="error",
+            alert_type="partial_loss",
+            message=f"Resource [{resource.name}] was returned with partial loss in transaction #{tx.id}.",
+            dedup_key=f"partial_loss:resource:{resource.id}",
         )
 
     return tx

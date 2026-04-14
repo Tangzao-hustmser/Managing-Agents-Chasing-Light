@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-04-12T11:00:19.721610Z",
+  "agent_eval_score": 100.0,
+  "agent_eval_passed": 7,
+  "agent_eval_total": 7,
+  "kpi_days": 30,
+  "kpi_metric_count": 5,
+  "artifacts": {
+    "agent_eval_latest_json": "docs\\reports\\agent_eval_latest.json",
+    "kpi_dashboard_latest_json": "docs\\reports\\kpi_dashboard_latest.json"
+  }
+}

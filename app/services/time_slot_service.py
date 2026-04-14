@@ -1,11 +1,20 @@
 """Borrow time-slot helpers."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models import Transaction
+
+
+def to_utc_naive(value: Optional[datetime]) -> Optional[datetime]:
+    """Normalize aware datetimes to UTC-naive for consistent DB comparisons."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def check_time_slot_conflict(
@@ -25,6 +34,11 @@ def check_time_slot_conflict(
     - When ``capacity`` is provided, only return overlap records when
       ``overlap_quantity + requested_quantity > capacity``.
     """
+    borrow_time = to_utc_naive(borrow_time)
+    return_time = to_utc_naive(return_time)
+
+    if borrow_time is None or return_time is None:
+        raise ValueError("borrow_time and expected_return_time are required")
     if borrow_time >= return_time:
         raise ValueError("expected_return_time must be later than borrow_time")
 
@@ -46,8 +60,8 @@ def check_time_slot_conflict(
         if exclude_transaction_id and tx.id == exclude_transaction_id:
             continue
 
-        tx_start = tx.borrow_time
-        tx_end = tx.expected_return_time or tx.return_time or (datetime.utcnow() + timedelta(days=365))
+        tx_start = to_utc_naive(tx.borrow_time)
+        tx_end = to_utc_naive(tx.expected_return_time or tx.return_time) or (datetime.utcnow() + timedelta(days=365))
         if max(borrow_time, tx_start) < min(return_time, tx_end):
             result.append(tx)
 
@@ -61,7 +75,11 @@ def check_time_slot_conflict(
 
 def calculate_duration(borrow_time: datetime, return_time: Optional[datetime]) -> Optional[int]:
     """Calculate borrow duration in minutes."""
-    if return_time is None:
+    borrow = to_utc_naive(borrow_time)
+    returned = to_utc_naive(return_time)
+    if returned is None:
         return None
-    delta = return_time - borrow_time
+    if borrow is None:
+        return None
+    delta = returned - borrow
     return int(delta.total_seconds() / 60)

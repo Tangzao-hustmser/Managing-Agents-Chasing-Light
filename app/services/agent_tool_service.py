@@ -5,18 +5,23 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Alert, ApprovalTask, ChatSession, Resource, Transaction, User
-from app.services.approval_service import approve_task, get_approval_by_id, reject_task
+from app.models import Alert, ApprovalTask, ChatSession, FollowUpTask, Resource, Transaction, User
+from app.services.approval_service import approve_task, create_approval_task, get_approval_by_id, reject_task
 from app.services.auth_service import is_admin, is_teacher_or_admin
 from app.services.smart_scheduler import get_optimal_time_slots
-from app.services.time_slot_service import check_time_slot_conflict
-from app.services.transaction_service import apply_inventory_change, build_transaction_out, validate_resource_action
+from app.services.time_slot_service import check_time_slot_conflict, to_utc_naive
+from app.services.transaction_service import (
+    append_note,
+    apply_inventory_change,
+    build_transaction_out,
+    validate_resource_action,
+)
 
 
 _RESOURCE_ALIAS_HINTS = (
@@ -59,6 +64,120 @@ _GOVERNANCE_KEYWORDS = {
     "怎么优化",
 }
 
+_REPLENISH_APPROVAL_ACTION_KEYWORDS = [
+    "补货审批单",
+    "生成补货审批",
+    "一键补货审批",
+    "按建议补货",
+    "执行补货建议",
+    "根据建议补货",
+    "执行建议补货",
+]
+
+_FOLLOW_UP_QUERY_KEYWORDS = {
+    "待办",
+    "任务",
+    "闭环",
+    "后续",
+    "追责",
+    "维护任务",
+    "follow-up",
+}
+
+_BORROW_ACTION_KEYWORDS = [
+    "申请借",
+    "帮我借",
+    "借用申请",
+    "提交借用",
+    "我要借",
+    "帮我预约",
+    "帮我预定",
+    "安排借用",
+]
+
+_CONSUME_ACTION_KEYWORDS = [
+    "申请领用",
+    "申请领料",
+    "提交领用",
+    "我要领用",
+    "我要领料",
+    "领料申请",
+    "领用申请",
+]
+
+_REPLENISH_ACTION_KEYWORDS = [
+    "补货",
+    "补库存",
+    "补充库存",
+    "采购入库",
+    "加库存",
+]
+
+_LOSS_ACTION_KEYWORDS = [
+    "报失",
+    "登记丢失",
+    "丢失登记",
+    "设备遗失",
+    "物料遗失",
+    "资源遗失",
+]
+
+_APPROVE_ACTION_KEYWORDS = [
+    "通过审批",
+    "批准审批",
+    "审核通过",
+    "同意审批",
+    "批准申请",
+    "通过申请",
+]
+
+_REJECT_ACTION_KEYWORDS = [
+    "拒绝审批",
+    "驳回审批",
+    "不通过审批",
+    "拒绝申请",
+    "驳回申请",
+]
+
+_TASK_DONE_KEYWORDS = [
+    "完成任务",
+    "关闭任务",
+    "任务完成",
+    "处理完成",
+    "结案任务",
+    "完结任务",
+    "done task",
+]
+
+_TASK_PROGRESS_KEYWORDS = [
+    "开始任务",
+    "开始处理",
+    "跟进任务",
+    "任务处理中",
+    "着手处理任务",
+]
+
+_CONTEXT_REFERENCE_KEYWORDS = {"这个", "该", "这条", "上一条", "最新", "刚刚"}
+
+_WEEKDAY_MAP = {
+    "一": 0,
+    "二": 1,
+    "三": 2,
+    "四": 3,
+    "五": 4,
+    "六": 5,
+    "日": 6,
+    "天": 6,
+}
+
+_PERIOD_DEFAULT_HOUR = {
+    "早上": 9,
+    "上午": 9,
+    "中午": 12,
+    "下午": 14,
+    "晚上": 19,
+}
+
 
 def _normalize_text(value: str) -> str:
     return re.sub(r"[\s\-_]+", "", value.lower())
@@ -99,7 +218,7 @@ def _resource_match_score(resource: Resource, question: str) -> int:
 
 
 def _find_resource_from_question(db: Session, question: str) -> Optional[Resource]:
-    resources = db.query(Resource).all()
+    resources = db.query(Resource).filter(Resource.status != "disabled").all()
     best_match = None
     best_score = 0
     for resource in resources:
@@ -129,42 +248,187 @@ def _parse_duration_minutes(question: str) -> int:
     return 120
 
 
+def _detect_period(question: str) -> Optional[str]:
+    for period in ["早上", "上午", "中午", "下午", "晚上"]:
+        if period in question:
+            return period
+    return None
+
+
+def _normalize_hour(period: Optional[str], hour: int) -> int:
+    normalized_hour = hour
+    if period in {"下午", "晚上"} and 0 <= hour < 12:
+        normalized_hour = hour + 12
+    elif period == "中午" and 0 <= hour < 11:
+        normalized_hour = hour + 12
+    return max(0, min(normalized_hour, 23))
+
+
+def _extract_explicit_hour_minute(question: str, period: Optional[str]) -> Optional[tuple[int, int]]:
+    # Examples: 14:30, 14点, 14点30, 3点半
+    match = re.search(r"(?<!\d)(\d{1,2})\s*(?:点|:|：)\s*(\d{1,2})?\s*(半)?", question)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    if hour > 23:
+        return None
+    minute = 30 if match.group(3) else int(match.group(2) or 0)
+    minute = max(0, min(minute, 59))
+    return _normalize_hour(period, hour), minute
+
+
+def _resolve_relative_date(question: str, now: datetime) -> Optional[date]:
+    if "大后天" in question:
+        return (now + timedelta(days=3)).date()
+    if "后天" in question:
+        return (now + timedelta(days=2)).date()
+    if "明天" in question:
+        return (now + timedelta(days=1)).date()
+    if "今天" in question:
+        return now.date()
+
+    weekday_match = re.search(r"(下周|本周|这周|周|星期)([一二三四五六日天])", question)
+    if not weekday_match:
+        return None
+
+    prefix = weekday_match.group(1)
+    target_weekday = _WEEKDAY_MAP[weekday_match.group(2)]
+    today = now.date()
+    current_weekday = today.weekday()
+
+    if prefix == "下周":
+        start_of_current_week = today - timedelta(days=current_weekday)
+        start_of_next_week = start_of_current_week + timedelta(days=7)
+        return start_of_next_week + timedelta(days=target_weekday)
+
+    delta_days = (target_weekday - current_weekday) % 7
+    if prefix in {"本周", "这周"} and delta_days == 0:
+        return today
+    return today + timedelta(days=delta_days)
+
+
 def _parse_preferred_start(question: str) -> Optional[datetime]:
     now = datetime.utcnow()
-    if "后天下午" in question:
-        return (now + timedelta(days=2)).replace(hour=14, minute=0, second=0, microsecond=0)
-    if "后天上午" in question:
-        return (now + timedelta(days=2)).replace(hour=9, minute=0, second=0, microsecond=0)
-    if "后天晚上" in question:
-        return (now + timedelta(days=2)).replace(hour=19, minute=0, second=0, microsecond=0)
-    if "明天下午" in question:
-        return (now + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
-    if "明天上午" in question:
-        return (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
-    if "明天晚上" in question:
-        return (now + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
-    if "今天下午" in question:
-        return now.replace(hour=14, minute=0, second=0, microsecond=0)
-    if "今天上午" in question:
-        return now.replace(hour=9, minute=0, second=0, microsecond=0)
-    if "今天晚上" in question:
-        return now.replace(hour=19, minute=0, second=0, microsecond=0)
-    if "后天" in question:
-        return (now + timedelta(days=2)).replace(hour=14, minute=0, second=0, microsecond=0)
-    if "明天" in question:
-        return (now + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
+    period = _detect_period(question)
+    default_hour = _PERIOD_DEFAULT_HOUR.get(period or "", 14)
+    explicit_time = _extract_explicit_hour_minute(question, period)
 
-    match = re.search(r"(\d{4}-\d{2}-\d{2})\s*(\d{1,2})[点:：](\d{0,2})?", question)
-    if match:
-        hour = int(match.group(2))
-        minute = int(match.group(3) or 0)
-        return datetime.fromisoformat(match.group(1)).replace(hour=hour, minute=minute)
+    # Absolute date first: 2026-04-12 / 2026-04-12 14:30
+    absolute_date_match = re.search(r"(\d{4}-\d{2}-\d{2})", question)
+    if absolute_date_match:
+        target_date = datetime.fromisoformat(absolute_date_match.group(1)).date()
+        hour, minute = explicit_time or (default_hour, 0)
+        return datetime.combine(target_date, datetime.min.time()).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+
+    target_date = _resolve_relative_date(question, now)
+    if target_date:
+        hour, minute = explicit_time or (default_hour, 0)
+        return datetime.combine(target_date, datetime.min.time()).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
     return None
 
 
 def _parse_project_name(question: str) -> str:
     match = re.search(r"(?:项目|project)[:： ]+([A-Za-z0-9_\-\u4e00-\u9fff]+)", question, re.IGNORECASE)
     return match.group(1) if match else ""
+
+
+def _intent_match(question: str, keywords: List[str]) -> bool:
+    lowered = question.lower()
+    normalized = _normalize_text(question)
+    for keyword in keywords:
+        if keyword.lower() in lowered:
+            return True
+        normalized_keyword = _normalize_text(keyword)
+        if normalized_keyword and normalized_keyword in normalized:
+            return True
+    return False
+
+
+def _extract_reference_id(question: str, labels: List[str]) -> Optional[int]:
+    label_group = "|".join(re.escape(label) for label in labels)
+    patterns = [
+        rf"(?:{label_group})\s*#?\s*(\d+)",
+        rf"#\s*(\d+)\s*(?:{label_group})?",
+        rf"(\d+)\s*号?\s*(?:{label_group})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, question, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+
+    fallback = re.findall(r"\d+", question)
+    if len(fallback) == 1 and any(label in question for label in labels):
+        return int(fallback[0])
+    return None
+
+
+def _has_context_reference(question: str, labels: List[str]) -> bool:
+    return any(label in question for label in labels) and any(token in question for token in _CONTEXT_REFERENCE_KEYWORDS)
+
+
+def _is_approve_intent(question: str) -> bool:
+    lowered = question.lower()
+    normalized = _normalize_text(question)
+    has_approval_noun = any(token in lowered for token in ["审批", "申请", "approval"])
+    if not has_approval_noun:
+        return False
+    approve_verbs = ["通过", "批准", "同意", "审核通过", "approve"]
+    return any(verb in lowered for verb in approve_verbs) or any(
+        _normalize_text(verb) in normalized for verb in approve_verbs
+    )
+
+
+def _is_reject_intent(question: str) -> bool:
+    lowered = question.lower()
+    normalized = _normalize_text(question)
+    has_approval_noun = any(token in lowered for token in ["审批", "申请", "approval"])
+    if not has_approval_noun:
+        return False
+    reject_verbs = ["拒绝", "驳回", "不通过", "退回", "reject"]
+    return any(verb in lowered for verb in reject_verbs) or any(
+        _normalize_text(verb) in normalized for verb in reject_verbs
+    )
+
+
+def _resolve_pending_approval(db: Session, current_user: User, question: str) -> Optional[ApprovalTask]:
+    approval_id = _extract_reference_id(question, ["审批", "申请", "approval"])
+    query = db.query(ApprovalTask).filter(ApprovalTask.status == "pending")
+    if approval_id is not None:
+        return query.filter(ApprovalTask.id == approval_id).first()
+
+    if not _has_context_reference(question, ["审批", "申请"]):
+        return None
+
+    return (
+        query
+        .filter(ApprovalTask.requester_id != current_user.id)
+        .order_by(ApprovalTask.created_at.asc())
+        .first()
+    )
+
+
+def _resolve_follow_up_task_target(db: Session, current_user: User, question: str) -> Optional[FollowUpTask]:
+    task_id = _extract_reference_id(question, ["任务", "task"])
+    query = db.query(FollowUpTask)
+    if task_id is not None:
+        return query.filter(FollowUpTask.id == task_id).first()
+
+    if not _has_context_reference(question, ["任务"]):
+        return None
+
+    if not is_teacher_or_admin(current_user):
+        query = query.filter(FollowUpTask.assigned_user_id == current_user.id)
+
+    return (
+        query
+        .filter(FollowUpTask.status.in_(["open", "in_progress"]))
+        .order_by(FollowUpTask.due_at.asc(), FollowUpTask.created_at.asc())
+        .first()
+    )
 
 
 def _is_confirmation_message(message: str) -> bool:
@@ -239,6 +503,45 @@ def _format_schedule_reply(resource: Resource, slots: List[Dict], preferred_star
     return "\n".join(lines)
 
 
+def _build_analysis_steps(
+    *,
+    intent: str,
+    resource: Optional[Resource] = None,
+    preferred_start: Optional[datetime] = None,
+    duration_minutes: Optional[int] = None,
+    note: str = "",
+) -> List[str]:
+    steps: List[str] = []
+
+    if resource:
+        steps.append(f"感知输入：识别到目标资源为「{resource.name}」。")
+    else:
+        steps.append("感知输入：尚未识别到明确资源实体。")
+
+    if intent == "schedule_recommendation":
+        duration_text = duration_minutes if duration_minutes is not None else 120
+        steps.append(f"推理规划：围绕 {duration_text} 分钟使用时长计算候选时段并评估冲突/评分。")
+        if preferred_start:
+            steps.append(f"偏好约束：优先靠近你给出的时间点 {preferred_start.strftime('%Y-%m-%d %H:%M')}。")
+        steps.append("执行输出：返回可执行时段、首选开始时间和选择理由。")
+    elif intent == "inventory_status":
+        steps.append("推理规划：读取库存与阈值状态，并判断是否处于紧张区间。")
+        steps.append("执行输出：返回当前可用量、总量和状态。")
+    elif intent == "approval_status":
+        steps.append("推理规划：聚合审批队列的待审、通过、拒绝数量。")
+        steps.append("执行输出：返回审批吞吐概况，支持决策优先级。")
+    elif intent in {"governance_recommendation", "anomaly_analysis", "follow_up_tasks"}:
+        steps.append("推理规划：融合实时业务数据生成治理和闭环建议。")
+        steps.append("执行输出：返回可落地动作和优先级提示。")
+    else:
+        steps.append("推理规划：执行通用业务意图识别并调用对应规则。")
+        steps.append("执行输出：给出可执行下一步建议。")
+
+    if note:
+        steps.append(f"补充说明：{note}")
+    return steps
+
+
 def _build_governance_suggestions(db: Session) -> str:
     devices = db.query(Resource).filter(Resource.category == "device", Resource.total_count > 0).all()
     if not devices:
@@ -278,8 +581,66 @@ def _build_governance_suggestions(db: Session) -> str:
         "建议优先把新预约引导到低占用设备。\n"
         f"2. 控制浪费：近期高量领用事件 {high_consume_events} 次，建议对大额领用启用二次确认和项目预算校验。\n"
         f"3. 降低丢失风险：报失 {lost_records} 次、部分丢失归还 {partial_loss_returns} 次，建议增加借还拍照留证与归还验收清单。\n"
-        f"补充：当前待审批 {pending_approvals} 条，可优先处理设备借用审批以提升周转效率。"
+        f"补充：当前待审批 {pending_approvals} 条，可优先处理设备借用审批以提升周转效率。\n"
+        "如需落地治理动作，你可以直接说“按建议补货”或“生成补货审批单”。"
     )
+
+
+def _pick_replenishment_candidate(db: Session, preferred_resource: Optional[Resource] = None) -> Optional[Dict[str, Any]]:
+    if preferred_resource and preferred_resource.category == "material" and preferred_resource.status != "disabled":
+        shortage = max((preferred_resource.min_threshold or 0) - (preferred_resource.available_count or 0), 0)
+        quantity = max(shortage + max(preferred_resource.min_threshold or 1, 1), 5)
+        return {"resource": preferred_resource, "quantity": quantity}
+
+    materials = (
+        db.query(Resource)
+        .filter(Resource.category == "material", Resource.status != "disabled")
+        .all()
+    )
+    if not materials:
+        return None
+
+    def _pressure_score(material: Resource) -> float:
+        total = max(material.total_count or 0, 1)
+        available = max(material.available_count or 0, 0)
+        shortage = max((material.min_threshold or 0) - available, 0)
+        scarcity = 1 - (available / total)
+        return shortage * 3 + scarcity * 2
+
+    target = sorted(materials, key=_pressure_score, reverse=True)[0]
+    shortage = max((target.min_threshold or 0) - (target.available_count or 0), 0)
+    quantity = max(shortage + max(target.min_threshold or 1, 1), 5)
+    return {"resource": target, "quantity": quantity}
+
+
+def _build_follow_up_task_summary(db: Session, current_user: Optional[User] = None) -> str:
+    query = (
+        db.query(FollowUpTask)
+        .options(joinedload(FollowUpTask.resource), joinedload(FollowUpTask.assigned_user))
+        .filter(FollowUpTask.status.in_(["open", "in_progress"]))
+    )
+    if current_user and not is_teacher_or_admin(current_user):
+        query = query.filter(
+            or_(
+                FollowUpTask.assigned_user_id == current_user.id,
+                FollowUpTask.transaction.has(Transaction.user_id == current_user.id),
+            )
+        )
+
+    tasks = query.order_by(FollowUpTask.due_at.asc(), FollowUpTask.created_at.asc()).limit(5).all()
+    if not tasks:
+        return "当前没有未完成的闭环任务。"
+
+    lines = ["当前优先处理的闭环任务："]
+    for task in tasks:
+        resource_name = task.resource.name if task.resource else f"Resource#{task.resource_id}"
+        owner = task.assigned_user.real_name if task.assigned_user else "未指派"
+        due_hint = task.due_at.strftime("%Y-%m-%d %H:%M") if task.due_at else "无截止时间"
+        lines.append(
+            f"- #{task.id} [{task.task_type}] {task.title}（资源：{resource_name}，负责人：{owner}，截止：{due_hint}）"
+        )
+    lines.append("如需我帮你执行关闭，可说“完成任务 #编号”。")
+    return "\n".join(lines)
 
 
 def ensure_chat_session(db: Session, session_id: Optional[str], owner: User) -> ChatSession:
@@ -317,7 +678,13 @@ def get_real_time_data_context(db: Session) -> Dict:
         .limit(10)
         .all()
     )
-    recent_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(5).all()
+    recent_alerts = (
+        db.query(Alert)
+        .filter(Alert.status != "resolved")
+        .order_by(Alert.created_at.desc())
+        .limit(5)
+        .all()
+    )
     pending_approvals = db.query(func.count(ApprovalTask.id)).filter(ApprovalTask.status == "pending").scalar() or 0
 
     return {
@@ -335,6 +702,7 @@ def get_real_time_data_context(db: Session) -> Dict:
             {
                 "type": alert.type,
                 "level": alert.level,
+                "status": alert.status,
                 "message": alert.message,
                 "created_at": alert.created_at.isoformat(),
             }
@@ -343,7 +711,7 @@ def get_real_time_data_context(db: Session) -> Dict:
     }
 
 
-def run_business_query(db: Session, question: str) -> Dict[str, str]:
+def run_business_query(db: Session, question: str, current_user: Optional[User] = None) -> Dict[str, Any]:
     """Answer a read-only question with deterministic business logic."""
     resource = _find_resource_from_question(db, question)
 
@@ -352,6 +720,10 @@ def run_business_query(db: Session, question: str) -> Dict[str, str]:
             return {
                 "intent": "schedule_recommendation",
                 "answer": "请告诉我具体设备名称（例如 3D打印机、激光切割机、万用表），我再帮你查空档。",
+                "analysis_steps": _build_analysis_steps(
+                    intent="schedule_recommendation",
+                    note="缺少设备名称，先补齐约束再进行排程。",
+                ),
             }
         duration_minutes = _parse_duration_minutes(question)
         preferred_start = _parse_preferred_start(question)
@@ -360,10 +732,23 @@ def run_business_query(db: Session, question: str) -> Dict[str, str]:
             return {
                 "intent": "schedule_recommendation",
                 "answer": f"暂时没找到 {resource.name} 的合适空档。你可以换一个日期，或缩短预计使用时长后再试。",
+                "analysis_steps": _build_analysis_steps(
+                    intent="schedule_recommendation",
+                    resource=resource,
+                    preferred_start=preferred_start,
+                    duration_minutes=duration_minutes,
+                    note="候选时段不足，建议换日期或缩短时长。",
+                ),
             }
         return {
             "intent": "schedule_recommendation",
             "answer": _format_schedule_reply(resource, slots, preferred_start),
+            "analysis_steps": _build_analysis_steps(
+                intent="schedule_recommendation",
+                resource=resource,
+                preferred_start=preferred_start,
+                duration_minutes=duration_minutes,
+            ),
         }
 
     if any(keyword in question for keyword in ["审批", "待审", "通过", "拒绝"]):
@@ -373,12 +758,21 @@ def run_business_query(db: Session, question: str) -> Dict[str, str]:
         return {
             "intent": "approval_status",
             "answer": f"当前待审批 {pending} 条，已通过 {approved} 条，已拒绝 {rejected} 条。",
+            "analysis_steps": _build_analysis_steps(intent="approval_status"),
         }
 
     if any(keyword in question for keyword in _GOVERNANCE_KEYWORDS):
         return {
             "intent": "governance_recommendation",
             "answer": _build_governance_suggestions(db),
+            "analysis_steps": _build_analysis_steps(intent="governance_recommendation"),
+        }
+
+    if any(keyword in question.lower() for keyword in _FOLLOW_UP_QUERY_KEYWORDS):
+        return {
+            "intent": "follow_up_tasks",
+            "answer": _build_follow_up_task_summary(db, current_user),
+            "analysis_steps": _build_analysis_steps(intent="follow_up_tasks"),
         }
 
     if any(keyword in question for keyword in ["异常", "超时", "逾期", "损坏", "丢失"]):
@@ -395,14 +789,22 @@ def run_business_query(db: Session, question: str) -> Dict[str, str]:
             .all()
         )
         if not overdue:
-            return {"intent": "anomaly_analysis", "answer": "当前没有超时未归还记录。"}
+            return {
+                "intent": "anomaly_analysis",
+                "answer": "当前没有超时未归还记录。",
+                "analysis_steps": _build_analysis_steps(intent="anomaly_analysis"),
+            }
         lines = ["超时未归还记录："]
         for tx in overdue[:5]:
             resource_name = tx.resource.name if tx.resource else f"Resource#{tx.resource_id}"
             user_name = tx.user.real_name if tx.user else f"User#{tx.user_id}"
             overdue_hours = round((datetime.utcnow() - tx.expected_return_time).total_seconds() / 3600, 1)
             lines.append(f"- {user_name} 占用 {resource_name}，已超时 {overdue_hours} 小时")
-        return {"intent": "anomaly_analysis", "answer": "\n".join(lines)}
+        return {
+            "intent": "anomaly_analysis",
+            "answer": "\n".join(lines),
+            "analysis_steps": _build_analysis_steps(intent="anomaly_analysis"),
+        }
 
     if resource:
         item_suffix = ""
@@ -413,12 +815,17 @@ def run_business_query(db: Session, question: str) -> Dict[str, str]:
             f"{resource.name} 当前可用 {resource.available_count}/{resource.total_count}"
             f"，阈值 {resource.min_threshold}，状态 {resource.status}{item_suffix}。"
         )
-        return {"intent": "inventory_status", "answer": answer}
+        return {
+            "intent": "inventory_status",
+            "answer": answer,
+            "analysis_steps": _build_analysis_steps(intent="inventory_status", resource=resource),
+        }
 
     low_count = db.query(func.count(Resource.id)).filter(Resource.available_count <= Resource.min_threshold).scalar() or 0
     return {
         "intent": "recommendation",
         "answer": f"当前共有 {low_count} 类资源处于低库存。你可以继续问我库存、审批、排程或异常治理问题。",
+        "analysis_steps": _build_analysis_steps(intent="recommendation"),
     }
 
 
@@ -430,7 +837,34 @@ def build_action_proposal(db: Session, current_user: User, question: str) -> Opt
     preferred_start = _parse_preferred_start(question)
     project_name = _parse_project_name(question)
 
-    if any(keyword in question for keyword in ["申请借", "帮我借", "借用申请", "我要借"]) and resource:
+    governance_follow_up = (
+        _intent_match(question, _REPLENISH_APPROVAL_ACTION_KEYWORDS)
+        or (
+            "建议" in question
+            and any(token in question for token in ["执行", "落地", "一键"])
+            and any(token in question for token in ["补货", "库存"])
+        )
+    )
+    if governance_follow_up and current_user.role in {"teacher", "admin"}:
+        candidate = _pick_replenishment_candidate(db, resource)
+        if candidate:
+            target = candidate["resource"]
+            quantity = int(candidate["quantity"])
+            return {
+                "name": "create_replenish_approval",
+                "title": f"生成补货审批单：{target.name} x{quantity}",
+                "proposed_payload": {
+                    "resource_id": target.id,
+                    "action": "replenish",
+                    "quantity": quantity,
+                    "purpose": "governance replenishment recommendation",
+                    "project_name": project_name,
+                    "note": question,
+                    "reason": "Agent-generated governance replenishment recommendation",
+                },
+            }
+
+    if _intent_match(question, _BORROW_ACTION_KEYWORDS) and resource:
         start = preferred_start or (datetime.utcnow() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
         end = start + timedelta(minutes=duration_minutes)
         return {
@@ -448,7 +882,7 @@ def build_action_proposal(db: Session, current_user: User, question: str) -> Opt
             },
         }
 
-    if any(keyword in question for keyword in ["申请领用", "领料", "领用"]) and resource:
+    if _intent_match(question, _CONSUME_ACTION_KEYWORDS) and resource:
         return {
             "name": "submit_consume_application",
             "title": f"提交领用申请：{resource.name} x{quantity}",
@@ -462,7 +896,7 @@ def build_action_proposal(db: Session, current_user: User, question: str) -> Opt
             },
         }
 
-    if any(keyword in question for keyword in ["补货", "补充库存", "补库存"]) and resource and is_admin(current_user):
+    if _intent_match(question, _REPLENISH_ACTION_KEYWORDS) and resource and is_admin(current_user):
         return {
             "name": "replenish_inventory",
             "title": f"补货入库：{resource.name} x{quantity}",
@@ -475,7 +909,7 @@ def build_action_proposal(db: Session, current_user: User, question: str) -> Opt
             },
         }
 
-    if any(keyword in question for keyword in ["报失", "登记丢失", "丢失登记"]) and resource and is_teacher_or_admin(current_user):
+    if _intent_match(question, _LOSS_ACTION_KEYWORDS) and resource and is_teacher_or_admin(current_user):
         return {
             "name": "report_loss",
             "title": f"登记报失：{resource.name} x{quantity}",
@@ -489,25 +923,45 @@ def build_action_proposal(db: Session, current_user: User, question: str) -> Opt
             },
         }
 
-    if any(keyword in question for keyword in ["批准", "通过审批", "同意审批"]) and is_teacher_or_admin(current_user):
-        match = re.search(r"(\d+)", question)
-        if match:
-            approval_id = int(match.group(1))
+    if (_intent_match(question, _APPROVE_ACTION_KEYWORDS) or _is_approve_intent(question)) and is_teacher_or_admin(current_user):
+        approval = _resolve_pending_approval(db, current_user, question)
+        if approval:
             return {
                 "name": "approve_task",
-                "title": f"通过审批 #{approval_id}",
-                "proposed_payload": {"approval_id": approval_id, "reason": question},
+                "title": f"通过审批 #{approval.id}",
+                "proposed_payload": {"approval_id": approval.id, "reason": question},
             }
 
-    if any(keyword in question for keyword in ["拒绝审批", "驳回审批", "不通过"]) and is_teacher_or_admin(current_user):
-        match = re.search(r"(\d+)", question)
-        if match:
-            approval_id = int(match.group(1))
+    if (_intent_match(question, _REJECT_ACTION_KEYWORDS) or _is_reject_intent(question)) and is_teacher_or_admin(current_user):
+        approval = _resolve_pending_approval(db, current_user, question)
+        if approval:
             return {
                 "name": "reject_task",
-                "title": f"拒绝审批 #{approval_id}",
-                "proposed_payload": {"approval_id": approval_id, "reason": question},
+                "title": f"拒绝审批 #{approval.id}",
+                "proposed_payload": {"approval_id": approval.id, "reason": question},
             }
+
+    if _intent_match(question, _TASK_DONE_KEYWORDS):
+        follow_up = _resolve_follow_up_task_target(db, current_user, question)
+        if follow_up:
+            can_update = is_teacher_or_admin(current_user) or follow_up.assigned_user_id == current_user.id
+            if can_update:
+                return {
+                    "name": "update_follow_up_task",
+                    "title": f"将闭环任务 #{follow_up.id} 标记为完成",
+                    "proposed_payload": {"task_id": follow_up.id, "status": "done", "note": question},
+                }
+
+    if _intent_match(question, _TASK_PROGRESS_KEYWORDS):
+        follow_up = _resolve_follow_up_task_target(db, current_user, question)
+        if follow_up:
+            can_update = is_teacher_or_admin(current_user) or follow_up.assigned_user_id == current_user.id
+            if can_update:
+                return {
+                    "name": "update_follow_up_task",
+                    "title": f"将闭环任务 #{follow_up.id} 标记为处理中",
+                    "proposed_payload": {"task_id": follow_up.id, "status": "in_progress", "note": question},
+                }
 
     return None
 
@@ -537,6 +991,8 @@ def _execute_transaction_tool(db: Session, current_user: User, payload: Dict) ->
     resource = db.query(Resource).filter(Resource.id == payload["resource_id"]).first()
     if not resource:
         raise ValueError("Resource not found")
+    if resource.status == "disabled":
+        raise ValueError("Resource is archived/disabled and cannot be used")
 
     action = payload["action"]
     quantity = int(payload.get("quantity", 1))
@@ -552,9 +1008,9 @@ def _execute_transaction_tool(db: Session, current_user: User, payload: Dict) ->
         action=action,
         quantity=quantity,
         note=payload.get("note", ""),
-        borrow_time=datetime.fromisoformat(payload["borrow_time"]) if payload.get("borrow_time") else None,
+        borrow_time=to_utc_naive(datetime.fromisoformat(payload["borrow_time"])) if payload.get("borrow_time") else None,
         expected_return_time=(
-            datetime.fromisoformat(payload["expected_return_time"])
+            to_utc_naive(datetime.fromisoformat(payload["expected_return_time"]))
             if payload.get("expected_return_time")
             else None
         ),
@@ -603,6 +1059,94 @@ def _execute_transaction_tool(db: Session, current_user: User, payload: Dict) ->
     }
 
 
+def _execute_follow_up_task_tool(db: Session, current_user: User, payload: Dict) -> Dict:
+    task_id = int(payload["task_id"])
+    target_status = payload.get("status", "done")
+    if target_status not in {"open", "in_progress", "done", "cancelled"}:
+        raise ValueError("Unsupported follow-up task status")
+
+    task = db.query(FollowUpTask).filter(FollowUpTask.id == task_id).first()
+    if not task:
+        raise ValueError("Follow-up task not found")
+
+    can_update = is_teacher_or_admin(current_user) or task.assigned_user_id == current_user.id
+    if not can_update:
+        raise ValueError("You cannot update this follow-up task")
+
+    previous_status = task.status
+    task.status = target_status
+    now = datetime.utcnow()
+    task.updated_at = now
+    note = (payload.get("note") or "").strip()
+    if note:
+        actor = current_user.real_name or current_user.username
+        task.description = append_note(task.description, f"[{now.isoformat()}] {actor}: {note}")
+
+    if payload.get("result") is not None:
+        task.result = (payload.get("result") or "").strip()
+    if payload.get("outcome_score") is not None:
+        task.outcome_score = float(payload.get("outcome_score"))
+
+    if target_status in {"done", "cancelled"}:
+        task.closed_at = now
+        if not (task.result or "").strip() and note:
+            task.result = note
+        if task.outcome_score is None:
+            task.outcome_score = 100.0 if target_status == "done" else 60.0
+    elif previous_status in {"done", "cancelled"}:
+        task.closed_at = None
+
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return {"summary": f"已将闭环任务 #{task.id} 更新为 {task.status}。"}
+
+
+def _execute_replenish_approval_tool(db: Session, current_user: User, payload: Dict) -> Dict:
+    if current_user.role not in {"teacher", "admin"}:
+        raise ValueError("Only teachers or admins can create replenishment approvals")
+
+    resource_id = int(payload["resource_id"])
+    quantity = int(payload.get("quantity", 1))
+    if quantity <= 0:
+        raise ValueError("Replenishment quantity must be positive")
+
+    resource = db.query(Resource).filter(Resource.id == resource_id).first()
+    if not resource:
+        raise ValueError("Resource not found")
+    if resource.status == "disabled":
+        raise ValueError("Resource is archived/disabled and cannot be used")
+
+    tx = Transaction(
+        resource_id=resource.id,
+        user_id=current_user.id,
+        action="replenish",
+        quantity=quantity,
+        note=payload.get("note", ""),
+        purpose=payload.get("purpose", "governance replenishment recommendation"),
+        project_name=payload.get("project_name", ""),
+        estimated_quantity=quantity,
+        status="pending",
+        is_approved=False,
+        inventory_applied=False,
+    )
+    db.add(tx)
+    db.flush()
+    tx.resource = resource
+    tx.user = current_user
+    approval = create_approval_task(
+        db,
+        tx,
+        current_user,
+        reason=payload.get("reason", "Agent-generated replenishment recommendation"),
+    )
+    db.commit()
+    db.refresh(tx)
+    return {
+        "summary": f"已生成补货审批单 #{approval.id}（流水 #{tx.id}），等待审批后执行入库。",
+    }
+
+
 def execute_pending_action(db: Session, session: ChatSession, current_user: User, confirmation_token: Optional[str]) -> Dict:
     """Execute the pending action stored in one session."""
     if not session.pending_tool_name or not session.pending_tool_payload:
@@ -616,6 +1160,10 @@ def execute_pending_action(db: Session, session: ChatSession, current_user: User
     tool_name = session.pending_tool_name
     if tool_name in {"submit_borrow_application", "submit_consume_application", "replenish_inventory", "report_loss"}:
         result = _execute_transaction_tool(db, current_user, payload)
+    elif tool_name == "create_replenish_approval":
+        result = _execute_replenish_approval_tool(db, current_user, payload)
+    elif tool_name == "update_follow_up_task":
+        result = _execute_follow_up_task_tool(db, current_user, payload)
     elif tool_name == "approve_task":
         if not is_teacher_or_admin(current_user):
             raise ValueError("Only teachers or admins can approve requests")

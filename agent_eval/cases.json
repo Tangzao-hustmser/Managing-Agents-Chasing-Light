@@ -1,0 +1,114 @@
+{
+  "meta": {
+    "name": "命题D智能体能力评测集",
+    "version": "2026-04-12",
+    "target_endpoint": "/agent/chat",
+    "description": "覆盖问答、执行、拒绝、澄清、异常处理五类能力，用于回归评分。"
+  },
+  "cases": [
+    {
+      "id": "qa_inventory_status",
+      "category": "qa",
+      "title": "库存问答返回资源状态",
+      "type": "single_turn",
+      "role": "student1",
+      "message": "查一下 3D Printer 的库存",
+      "expect": {
+        "status_code": 200,
+        "confirmation_required": false,
+        "reply_contains": [
+          "3D Printer"
+        ],
+        "analysis_steps_min": 2
+      }
+    },
+    {
+      "id": "qa_governance_recommendation",
+      "category": "qa",
+      "title": "治理问答返回治理建议",
+      "type": "single_turn",
+      "role": "student1",
+      "message": "怎么优化资源利用率并减少耗材浪费和工具丢失？",
+      "expect": {
+        "status_code": 200,
+        "confirmation_required": false,
+        "reply_contains_any": [
+          "建议优先做这 3 件事",
+          "建议优先做这3件事"
+        ],
+        "analysis_steps_min": 2
+      }
+    },
+    {
+      "id": "execution_submit_borrow_application",
+      "category": "execution",
+      "title": "借用申请可确认执行",
+      "type": "propose_confirm",
+      "role": "student1",
+      "propose_message": "帮我申请借用 3D Printer 1台 明天下午 2小时 项目 Alpha",
+      "confirm_message": "确认",
+      "expected_pending_action": "submit_borrow_application",
+      "expected_executed_tool": "submit_borrow_application"
+    },
+    {
+      "id": "execution_create_replenish_approval",
+      "category": "execution",
+      "title": "治理建议可转为补货审批动作",
+      "type": "propose_confirm",
+      "role": "teacher1",
+      "propose_message": "按建议补货，帮我生成补货审批单",
+      "confirm_message": "确认",
+      "expected_pending_action": "create_replenish_approval",
+      "expected_executed_tool": "create_replenish_approval"
+    },
+    {
+      "id": "refusal_unauthorized_replenish_by_student",
+      "category": "refusal",
+      "title": "学生越权补货请求应被拒绝执行",
+      "type": "single_turn",
+      "role": "student1",
+      "message": "帮我补货 PLA Material 10个",
+      "expect": {
+        "status_code": 200,
+        "confirmation_required": false,
+        "pending_action_absent": true,
+        "reply_contains": [
+          "PLA Material"
+        ],
+        "executed_tools_len": 0
+      }
+    },
+    {
+      "id": "clarification_schedule_missing_resource",
+      "category": "clarification",
+      "title": "排程缺少资源名时应澄清",
+      "type": "single_turn",
+      "role": "student1",
+      "message": "我明天下午想用设备，有空档吗",
+      "expect": {
+        "status_code": 200,
+        "confirmation_required": false,
+        "pending_action_absent": true,
+        "reply_contains_any": [
+          "3D",
+          "激光",
+          "万用表"
+        ],
+        "analysis_steps_min": 2
+      }
+    },
+    {
+      "id": "exception_bad_confirmation_token",
+      "category": "exception",
+      "title": "确认令牌错误触发异常处理",
+      "type": "bad_confirmation_token",
+      "role": "student1",
+      "propose_message": "帮我申请借用 3D Printer 1台 明天下午 2小时 项目 Alpha",
+      "confirm_message": "确认",
+      "bad_confirmation_token": "invalid-token",
+      "expected_pending_action": "submit_borrow_application",
+      "expected_status_code": 400,
+      "error_detail_contains": "token"
+    }
+  ]
+}

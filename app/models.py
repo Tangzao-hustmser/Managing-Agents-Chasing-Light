@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -206,7 +206,13 @@ class FollowUpTask(Base):
     title = Column(String(160), nullable=False)
     description = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
     due_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    result = Column(Text, default="")
+    outcome_score = Column(Float, nullable=True)
+    escalation_level = Column(Integer, default=0, nullable=False)
+    escalated_at = Column(DateTime, nullable=True)
 
     transaction = relationship("Transaction", back_populates="follow_up_tasks")
     resource = relationship("Resource", back_populates="follow_up_tasks")
@@ -227,7 +233,74 @@ class Alert(Base):
     level = Column(String(20), default="info")  # info/warn/error
     type = Column(String(40), nullable=False, index=True)
     message = Column(Text, nullable=False)
+    status = Column(String(20), default="open", index=True)  # open/acknowledged/resolved
+    dedup_key = Column(String(160), default="", index=True)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, index=True)
+    occurrence_count = Column(Integer, default=1)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by_user_id = Column(ForeignKey("users.id"), nullable=True, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolved_by_user_id = Column(ForeignKey("users.id"), nullable=True, index=True)
+    resolution_note = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class NotificationDelivery(Base):
+    """Outbound notification delivery log."""
+
+    __tablename__ = "notification_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String(80), nullable=False, index=True)
+    channel = Column(String(40), nullable=False, index=True)  # in_app/webhook/email/feishu
+    title = Column(String(200), default="")
+    content = Column(Text, default="")
+    target = Column(String(200), default="")
+    correlation_key = Column(String(160), default="", index=True)
+    status = Column(String(20), default="sent", index=True)  # sent/failed/skipped
+    response_message = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class IdempotencyRequest(Base):
+    """Stored successful responses for idempotent write requests."""
+
+    __tablename__ = "idempotency_requests"
+    __table_args__ = (
+        UniqueConstraint("scope", "user_id", "idempotency_key", name="uq_idempotency_scope_user_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    scope = Column(String(80), nullable=False, index=True)
+    user_id = Column(ForeignKey("users.id"), nullable=False, index=True)
+    idempotency_key = Column(String(128), nullable=False, index=True)
+    request_hash = Column(String(64), nullable=False)
+    entity_key = Column(String(120), default="", index=True)
+    status = Column(String(20), default="succeeded", index=True)
+    response_code = Column(Integer, default=200)
+    response_body = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+
+class AuditLog(Base):
+    """Operational audit log for key write actions."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(ForeignKey("users.id"), nullable=False, index=True)
+    actor_role = Column(String(20), default="", index=True)
+    action = Column(String(80), nullable=False, index=True)
+    entity_type = Column(String(60), default="", index=True)
+    entity_id = Column(String(60), default="", index=True)
+    http_method = Column(String(16), default="", index=True)
+    request_path = Column(String(255), default="")
+    idempotency_key = Column(String(128), default="", index=True)
+    detail_json = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    actor = relationship("User", foreign_keys=[actor_user_id])
 
 
 class ApprovalTask(Base):

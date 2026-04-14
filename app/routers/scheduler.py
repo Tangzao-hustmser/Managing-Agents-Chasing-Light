@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.routers.auth import get_current_user
-from app.schemas import DemandPredictionResponse, OptimizationResponse, SchedulerRequest, SchedulerResponse
+from app.schemas import (
+    DemandPredictionResponse,
+    FairnessPolicyConfig,
+    FairnessPolicyUpdate,
+    OptimizationResponse,
+    SchedulerRequest,
+    SchedulerResponse,
+)
+from app.services.fairness_policy_service import get_fairness_policy_config, update_fairness_policy_config
 from app.services.smart_scheduler import get_optimal_time_slots, optimize_resource_allocation, predict_resource_demand
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
@@ -28,6 +36,7 @@ def get_optimal_slots(
             resource_id=payload.resource_id,
             duration_minutes=payload.duration_minutes,
             preferred_start=payload.preferred_start,
+            requester_user_id=current_user.id,
         )
         return SchedulerResponse(
             resource_id=payload.resource_id,
@@ -83,6 +92,28 @@ def optimize_allocation(
         raise HTTPException(status_code=500, detail=f"Allocation optimization error: {exc}") from exc
 
 
+@router.get("/fairness-policy", response_model=FairnessPolicyConfig)
+def get_fairness_policy(
+    current_user: User = Depends(get_current_user),
+):
+    """Return runtime fairness policy config."""
+    _ = current_user
+    return FairnessPolicyConfig(**get_fairness_policy_config())
+
+
+@router.patch("/fairness-policy", response_model=FairnessPolicyConfig)
+def patch_fairness_policy(
+    payload: FairnessPolicyUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update fairness policy config. Admin only."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update fairness policy")
+
+    updated = update_fairness_policy_config(payload.model_dump(exclude_unset=True))
+    return FairnessPolicyConfig(**updated)
+
+
 @router.get("/health")
 def scheduler_health_check():
     """Health check for the scheduler."""
@@ -93,5 +124,6 @@ def scheduler_health_check():
             "optimal_time_slots",
             "demand_prediction",
             "resource_optimization",
+            "fairness_policy",
         ],
     }

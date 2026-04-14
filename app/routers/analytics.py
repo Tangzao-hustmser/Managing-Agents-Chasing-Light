@@ -1,12 +1,15 @@
 """Basic dashboard analytics routes."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Alert, Resource, Transaction, User
 from app.routers.auth import get_current_user
+from app.schemas import KPIDashboardResponse
+from app.services.auth_service import is_teacher_or_admin
+from app.services.kpi_service import build_kpi_dashboard
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -84,3 +87,15 @@ def waste_risk(
             for resource_id, times, total_quantity in items
         ]
     }
+
+
+@router.get("/kpi-dashboard", response_model=KPIDashboardResponse)
+def kpi_dashboard(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return KPI board with baseline/current/improvement and metric dictionary."""
+    if not is_teacher_or_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only teachers or admins can view KPI dashboard")
+    return KPIDashboardResponse(**build_kpi_dashboard(db, days=days))

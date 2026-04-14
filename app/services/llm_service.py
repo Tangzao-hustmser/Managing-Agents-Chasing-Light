@@ -194,7 +194,7 @@ def check_llm_connectivity() -> dict:
 def _maybe_refine_with_llm(
     db: Session,
     session_id: str,
-    query_result: Dict[str, str],
+    query_result: Dict[str, Any],
     current_user: User,
     llm_options: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, bool]:
@@ -224,7 +224,11 @@ def _maybe_refine_with_llm(
             },
             {
                 "role": "system",
-                "content": f"Deterministic tool intent: {query_result['intent']}. Deterministic tool answer: {deterministic_answer}",
+                "content": (
+                    f"Deterministic tool intent: {query_result['intent']}. "
+                    f"Deterministic tool answer: {deterministic_answer}. "
+                    f"Analysis steps: {query_result.get('analysis_steps', [])}"
+                ),
             },
             *history[-8:],
             {
@@ -261,6 +265,11 @@ def chat_with_agent(
             "session_id": sid,
             "reply": reply,
             "used_model": False,
+            "analysis_steps": [
+                "感知输入：识别到确认指令。",
+                "推理规划：校验待执行动作与确认令牌。",
+                "执行输出：执行已提议动作并返回结果摘要。",
+            ],
             "confirmation_required": False,
             "pending_action": None,
             "executed_tools": [{"name": result["name"], "status": "executed", "summary": reply}],
@@ -276,6 +285,11 @@ def chat_with_agent(
             "session_id": sid,
             "reply": reply,
             "used_model": False,
+            "analysis_steps": [
+                "感知输入：识别到取消指令。",
+                "推理规划：清理会话中的待执行动作。",
+                "执行输出：返回取消确认。",
+            ],
             "confirmation_required": False,
             "pending_action": None,
             "executed_tools": [],
@@ -295,18 +309,24 @@ def chat_with_agent(
             "session_id": sid,
             "reply": reply,
             "used_model": False,
+            "analysis_steps": [
+                "感知输入：识别到可执行业务动作请求。",
+                "推理规划：生成待执行动作与参数草案，等待用户确认。",
+                "执行输出：返回确认提示和动作令牌。",
+            ],
             "confirmation_required": True,
             "pending_action": pending_action,
             "executed_tools": [],
         }
 
-    query_result = run_business_query(db, user_message)
+    query_result = run_business_query(db, user_message, current_user)
     reply, used_model = _maybe_refine_with_llm(db, sid, query_result, current_user, llm_options)
     _save_message(db, sid, "assistant", reply)
     return {
         "session_id": sid,
         "reply": reply,
         "used_model": used_model,
+        "analysis_steps": query_result.get("analysis_steps", []),
         "confirmation_required": False,
         "pending_action": None,
         "executed_tools": [],

@@ -9,6 +9,7 @@ from app.database import get_db, ensure_database_schema
 from app.main import app
 from app.models import Resource, User
 from app.services.auth_service import hash_password
+from app.services.rate_limit_service import clear_rate_limit_cache
 
 
 def login_as(client: TestClient, username: str, password: str):
@@ -20,6 +21,7 @@ def login_as(client: TestClient, username: str, password: str):
 
 @pytest.fixture()
 def test_env(tmp_path):
+    clear_rate_limit_cache()
     db_path = tmp_path / "test.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -71,4 +73,5 @@ def test_env(tmp_path):
         }
 
     app.dependency_overrides.clear()
+    clear_rate_limit_cache()
     engine.dispose()

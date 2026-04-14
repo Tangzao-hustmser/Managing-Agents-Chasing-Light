@@ -40,13 +40,14 @@ def inspect_inventory_evidence(
     current_user: User = Depends(get_current_user),
 ):
     """Analyze inventory evidence and compare it with system stock."""
-    return InventoryVisionResponse(
-        **analyze_inventory_evidence(
-            db=db,
-            resource_id=payload.resource_id,
-            evidence_url=payload.evidence_url,
-            evidence_type=payload.evidence_type,
-            ocr_text=payload.ocr_text,
-            observed_count=payload.observed_count,
-        )
+    result = analyze_inventory_evidence(
+        db=db,
+        resource_id=payload.resource_id,
+        evidence_url=payload.evidence_url,
+        evidence_type=payload.evidence_type,
+        ocr_text=payload.ocr_text,
+        observed_count=payload.observed_count,
+        actor_user_id=current_user.id,
     )
+    db.commit()
+    return InventoryVisionResponse(**result)

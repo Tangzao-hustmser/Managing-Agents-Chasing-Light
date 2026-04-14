@@ -35,12 +35,15 @@
    - 正式挂载的增强分析总览。
 6. `POST /files/evidence/inventory-vision`
    - 七牛证据流中的视觉/盘点入口。
+7. `GET /system/readiness`
+   - 可选系统自检 API（readiness score + 风险项，默认不在主控制台展示）。
 
 说明：
 
 - `GET /dashboard` 仍保留为旧演示页，不建议作为正式展示页。
 - `/agent/chat` 与 `/enhanced-agent/ask` 都可用。
 - 如果你只想对外给一个“最稳”的聊天入口，优先使用 `/agent/chat`。
+- `/dashboard-main` 默认面向日常使用模式，不展示“决赛就绪检查”面板。
 
 ## 3. 运行环境
 
@@ -99,6 +102,17 @@ copy .env.example .env
 - `LLM_MODEL`
 - `LLM_TIMEOUT`
 
+### 4.6 治理与安全运行参数
+
+- `ALERT_DEDUP_WINDOW_SECONDS`
+- `NOTIFY_IN_APP_ENABLED`
+- `NOTIFY_WEBHOOK_ENABLED`
+- `NOTIFY_WEBHOOK_URL`
+- `NOTIFY_TIMEOUT`
+- `RATE_LIMIT_ENABLED`
+- `RATE_LIMIT_WINDOW_SECONDS`
+- `RATE_LIMIT_MAX_REQUESTS`
+
 说明：
 
 - 不配置 LLM 时，Agent 仍可使用规则和业务工具工作。
@@ -110,6 +124,12 @@ copy .env.example .env
 
 ```bash
 python -m uvicorn app.main:app --reload
+```
+
+Windows PowerShell 如未配置 `python` 命令，可使用：
+
+```bash
+py -m uvicorn app.main:app --reload
 ```
 
 启动后可访问：
@@ -125,6 +145,12 @@ python -m uvicorn app.main:app --reload
 
 ```bash
 python -m app.seed
+```
+
+决赛演示推荐使用固定场景重置脚本（可复现正常借还、损坏、丢失、逾期）：
+
+```bash
+python -m app.seed_scenarios
 ```
 
 默认演示账号：
@@ -228,6 +254,7 @@ Authorization: Bearer <jwt>
 - 管理资源类型
 - 管理设备实例
 - 管理维护记录
+- 支持资源归档删除与恢复（撤回误删）
 - 直接补货
 - 直接库存调整
 - 使用增强分析接口
@@ -333,7 +360,7 @@ Authorization: Bearer <jwt>
 - `borrow` 只允许对 `device` 类型资源发起。
 - 借用申请不会立即扣减库存。
 - 需要教师或管理员审批后才会占用库存和设备实例。
-- 同一时间段如果和已批准借用冲突，会返回 `400`。
+- 同一时间段仅在“并发借用数量超过设备总容量”时才会返回 `400`。
 
 ### 10.2 学生提交领用申请
 
@@ -388,6 +415,11 @@ Authorization: Bearer <jwt>
 }
 ```
 
+幂等建议：
+
+- 对审批写操作建议携带请求头 `Idempotency-Key: <unique-key>`。
+- 若因为网络重试或重复点击导致同键重复请求，系统会返回第一次成功审批的结果，不重复扣减库存。
+
 ### 10.4 学生归还设备
 
 接口：
@@ -441,6 +473,9 @@ Authorization: Bearer <jwt>
 约束：
 
 - `return_time` 必须大于等于 `borrow_time`。
+- 当 `condition_return` 为 `damaged` 或 `partial_lost` 时，建议同时提供 `evidence_url + evidence_type`。
+- 若异常归还缺失证据，系统会自动创建 `evidence_backfill` 闭环任务并生成 `evidence_missing` 预警。
+- 对归还写操作建议携带 `Idempotency-Key`，可避免重复提交导致的二次归还报错或状态漂移。
 
 ### 10.5 直接补货
 
@@ -491,6 +526,7 @@ Authorization: Bearer <jwt>
 - 仅教师和管理员可用。
 - 设备类资源会优先按实例登记。
 - 会产生追责任务。
+- 若缺失证据字段（`evidence_url/evidence_type`），系统会自动创建 `evidence_backfill` 任务和预警。
 
 ### 10.7 直接库存调整
 
@@ -513,8 +549,9 @@ Authorization: Bearer <jwt>
 说明：
 
 - 仅管理员可用。
-- 当前更适合物料类资源。
-- 对实例化设备，建议优先通过实例管理和真实归还/报失流程维护。
+- 只要 `target_total_count` 或 `target_available_count` 任一项发生变化即可提交，不要求两项同时变化。
+- 对实例化设备，若仅调整可用量，系统会优先释放维护/隔离实例，再按管理员覆盖规则同步状态。
+- 对库存调整写操作建议携带 `Idempotency-Key`；同键同载荷重试会重放首个成功结果，同键不同载荷会返回 `409`。
 
 ## 11. 资源与实例管理
 
@@ -524,6 +561,8 @@ Authorization: Bearer <jwt>
 - `GET /resources`
 - `GET /resources/{resource_id}`
 - `PATCH /resources/{resource_id}`
+- `DELETE /resources/{resource_id}`（管理员归档删除）
+- `POST /resources/{resource_id}/restore`（管理员恢复归档）
 - `POST /resources/{resource_id}/inventory-adjustments`
 
 ### 11.2 实例接口
@@ -604,6 +643,19 @@ Authorization: Bearer <jwt>
 - 执行补货
 - 执行报失
 - 执行审批/驳回
+- 将治理建议转成动作（如“按建议补货”生成补货审批单）
+
+### 12.5 治理建议自动落地（新增）
+
+可直接对智能体说：
+
+- `按建议补货`
+- `帮我生成补货审批单`
+
+行为：
+
+- Agent 会先生成待确认动作 `create_replenish_approval`。
+- 你确认后，系统会创建一条 `replenish` 类型审批单（pending），等待审批通过后再执行入库。
 
 ### 12.3 会话接口
 
@@ -644,9 +696,18 @@ Authorization: Bearer <jwt>
 返回会额外包含：
 
 - `real_time_data`
+- `analysis_steps`（感知-推理-执行高层步骤）
 - `confirmation_required`
 - `pending_action`
 - `executed_tools`
+- `multi_agent_trace`（调度代理/治理代理/证据代理分工轨迹）
+- `orchestration_summary`（多代理汇总结论）
+
+时间理解增强（排程问答）：
+
+- 支持 `今天/明天/后天/大后天`
+- 支持 `周X/下周X`
+- 支持 `下午3点半`、`14:30`、`YYYY-MM-DD` 组合表达
 
 ## 13. 调度与分析
 
@@ -655,14 +716,23 @@ Authorization: Bearer <jwt>
 - `POST /scheduler/optimal-slots`
 - `GET /scheduler/demand-prediction/{resource_id}`
 - `GET /scheduler/optimize-allocation`
+- `GET /scheduler/fairness-policy`
+- `PATCH /scheduler/fairness-policy`
 
 `/scheduler/optimize-allocation` 仅管理员可访问。
+
+`/scheduler/fairness-policy` 说明：
+
+- 所有登录用户可查看当前公平策略配置。
+- 仅管理员可更新策略开关与阈值（黄金时段配额、连续占用限制、高频用户降权）。
+- `optimal-slots` 返回中新增 `fairness_penalty` 与 `fairness_reasons`，用于解释公平约束如何影响排程分数。
 
 ### 13.2 基础分析
 
 - `GET /analytics/overview`
 - `GET /analytics/top-occupied-devices`
 - `GET /analytics/waste-risk`
+- `GET /analytics/kpi-dashboard`
 
 ### 13.3 增强分析
 
@@ -686,6 +756,45 @@ Authorization: Bearer <jwt>
 说明：
 
 - 增强分析仅管理员可访问。
+
+### 13.4 KPI 看板（新增）
+
+接口：
+
+- `GET /analytics/kpi-dashboard?days=30`
+
+说明：
+
+- 教师/管理员可访问。
+- 输出分为三部分：
+  - `period`：当前评测窗口与基线窗口。
+  - `metrics`：每个 KPI 的基线值、当前值、改善值、改善百分比、趋势与解释。
+  - `dictionary`：指标定义字典（公式、方向、单位、业务解释）。
+- 当前固化 KPI：
+  - `utilization_rate`（利用率）
+  - `overdue_rate`（逾期率）
+  - `waste_rate`（浪费率）
+  - `loss_rate`（报失率）
+  - `fairness_index`（公平指数）
+
+### 13.5 智能体能力评测集（P3-2）
+
+入口文件：
+
+- `agent_eval/cases.json`
+- `agent_eval/run_eval.py`
+
+运行方式：
+
+```bash
+py -m agent_eval.run_eval --output docs/reports/agent_eval_latest.json --fail-under 100
+```
+
+说明：
+
+- 覆盖五类能力：问答、执行、拒绝、澄清、异常处理。
+- 结果输出包含总分和分类分，便于每次改动后回归对比。
+- `--fail-under` 默认 `100`，低于阈值时命令返回非零退出码（适合 CI 卡口）。
 
 ## 14. 七牛与证据流
 
@@ -740,6 +849,14 @@ Authorization: Bearer <jwt>
 - 系统总库存
 - 差异值
 - 建议动作
+- 融合置信度 `recognition_confidence`
+- 识别来源 `recognized_sources`
+- 候选计数 `extracted_candidates`
+- 多源分歧指数 `disagreement_index`
+
+补充说明：
+
+- 若盘点请求缺失证据字段（`evidence_url/evidence_type`），系统会自动创建 `evidence_backfill` 任务，避免证据链中断。
 
 ## 15. 预警与审批汇总
 
@@ -747,12 +864,58 @@ Authorization: Bearer <jwt>
 
 `GET /alerts`
 
+预警处置接口（教师/管理员）：
+
+- `POST /alerts/{alert_id}/acknowledge`（确认）
+- `POST /alerts/{alert_id}/resolve`（消除）
+
+说明：
+
+- 默认 `GET /alerts` 仅返回未消除预警。
+- `GET /alerts?include_resolved=true` 可查看历史已消除预警。
+- 预警新增去重字段：`dedup_key`、`last_seen_at`、`occurrence_count`。
+- 同类事件在去重窗口内会累计 `occurrence_count`，不重复生成多条预警。
+
+### 15.3 系统自检 API（可选）
+
+`GET /system/readiness?probe_llm=false`
+
+说明：
+
+- 返回 `readiness_score`、`readiness_level`、`checks`、`stats`。
+- `probe_llm=true` 时会主动探测模型连通性（可能增加一次外部请求开销）。
+- 该能力可直接通过 API 调用，主控制台默认不展示独立“决赛就绪检查”面板。
+
 ### 15.2 审批
 
 - `GET /approvals`
 - `GET /approvals/{approval_id}`
 - `POST /approvals/{approval_id}/approve`
 - `GET /approvals/stats/summary`
+
+### 15.4 通知投递日志（新增）
+
+接口：
+
+- `GET /notifications/deliveries`
+
+说明：
+
+- 教师/管理员可查看通知投递日志。
+- 关键事件（待审批、超期任务升级、补证任务）会自动触发站内通知日志。
+- 可用 `event_type` 过滤，如 `approval_pending`、`follow_up_sla_overdue`、`evidence_backfill_required`。
+
+### 15.5 操作审计日志（新增）
+
+接口：
+
+- `GET /audit-logs`
+
+说明：
+
+- 教师/管理员可查看关键写操作审计日志。
+- 支持按 `action`、`entity_type`、`actor_user_id` 过滤。
+- 审计日志记录操作人、动作类型、对象类型/ID、请求路径、幂等键和细节 JSON。
 
 ## 16. 常见错误与处理
 
@@ -785,6 +948,26 @@ Authorization: Bearer <jwt>
 - `partial_lost` 缺少 `lost_quantity`
 - 设备实例数量与聚合库存不一致
 
+### 16.4 409 Conflict
+
+常见原因：
+
+- 同一个 `Idempotency-Key` 被复用于不同请求载荷。
+
+处理：
+
+- 为每次新的业务写入生成新的 `Idempotency-Key`，仅在“同一请求重试”时复用原键。
+
+### 16.5 429 Too Many Requests
+
+常见原因：
+
+- 命中关键写接口限流策略（短窗口内操作过于频繁）。
+
+处理：
+
+- 按响应头 `Retry-After` 等待后重试。
+
 ## 17. 推荐演示脚本
 
 一个完整演示可以按下面顺序进行：
@@ -814,3 +997,101 @@ Authorization: Bearer <jwt>
 - 填写 `Base URL`、`Model`、`API Key`、`Timeout` 后即可直接体验模型推理能力。
 - 前端仅将配置保存在浏览器本地；后端按请求临时使用，不写入数据库。
 - 当模型配置不完整或不可达时，系统会自动回退到规则引擎与业务工具，保证可用性。
+
+## 20. 异常闭环任务中心（新增）
+
+### 20.1 任务查询
+
+接口：
+`GET /follow-up-tasks`
+
+常用参数：
+- `status`：`open / in_progress / done / cancelled / all`
+- `assigned`：`me / all`
+- `task_type`：可选，例如 `maintenance / accountability / registry_backfill / loss_investigation`
+
+说明：
+- 教师/管理员可用 `assigned=all` 查看全局任务。
+- 学生仅可查看自己被指派或与自己借用记录关联的任务。
+
+### 20.2 任务状态更新
+
+接口：
+`PATCH /follow-up-tasks/{task_id}`
+
+请求示例：
+```json
+{
+  "status": "done",
+  "note": "已核对并补录完成"
+}
+```
+
+说明：
+- 仅教师/管理员，或该任务负责人可更新状态。
+- `note` 会追加到任务描述中，形成简易处理轨迹。
+- 支持附带 `result` 和 `outcome_score`，用于记录闭环结果质量。
+- 任务对象含 `updated_at/closed_at/escalation_level/escalated_at/sla_status`，可用于审计与治理看板。
+
+### 20.4 闭环任务 SLA 升级机制（新增）
+
+- 对 `open/in_progress` 且超期任务，系统会自动触发 SLA 升级。
+- 升级后任务会标记 `escalation_level` 与 `escalated_at`。
+- 同时生成去重预警 `follow_up_sla_overdue`，可在 `/alerts` 中追踪处置闭环。
+
+### 20.3 智能体联动
+
+你可以直接对智能体说：
+- `查看闭环任务`
+- `完成任务 #12`
+- `开始任务 #12`
+
+智能体会先给出确认，再执行任务状态变更，形成“发现异常 -> 指派任务 -> 确认执行 -> 闭环完成”的完整链路。
+
+## 21. 决赛答辩资产包（P3-3）
+
+答辩资料入口：
+
+- `docs/finals/2026-04-12-defense-evidence-chain.md`
+- `docs/finals/2026-04-12-defense-ppt-outline.md`
+- `docs/finals/2026-04-12-defense-ppt.md`
+- `docs/finals/2026-04-12-defense-demo-script.md`
+- `docs/finals/2026-04-12-competition-requirements-checklist.md`
+
+一键导出答辩报告：
+
+```bash
+py -m scripts.finals.export_defense_reports --output-dir docs/reports --kpi-days 30
+```
+
+输出文件：
+
+- `docs/reports/agent_eval_latest.json`
+- `docs/reports/kpi_dashboard_latest.json`
+- `docs/reports/defense_reports_summary.json`
+
+总验收检查（建议答辩前执行）：
+
+```bash
+py -m scripts.finals.run_release_checks --output docs/reports/finals_release_check.json
+```
+
+说明：
+
+- 会在临时隔离数据库中执行 `agent_eval + readiness + agent执行 + multi-agent + KPI` 五类验收。
+- 会额外输出比赛四条要求核查项：`competition_requirements_4x`。
+- `all_ok=true` 表示本地答辩包关键能力可复现。
+
+一键流水线（推荐）：
+
+```bash
+py -m scripts.finals.run_finals_pipeline --output-dir docs/reports --kpi-days 30
+```
+
+输出补充：
+
+- `docs/reports/finals_pipeline_summary.json`
+
+说明：
+
+- 该命令会顺序执行导出报告和总验收检查，是答辩前最简操作路径。

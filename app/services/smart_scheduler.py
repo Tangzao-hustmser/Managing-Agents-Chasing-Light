@@ -1,4 +1,4 @@
-"""Lightweight scheduling and resource optimization helpers."""
+ï»¿"""Lightweight scheduling and resource optimization helpers."""
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -6,13 +6,20 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.models import Resource, Transaction
+from app.services.fairness_policy_service import (
+    build_user_fairness_profile,
+    evaluate_fairness_penalty,
+    get_fairness_policy_config,
+)
+from app.services.time_slot_service import to_utc_naive
 
 
 class SmartScheduler:
     """Provide simple scheduling recommendations for device resources."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, requester_user_id: Optional[int] = None):
         self.db = db
+        self.requester_user_id = requester_user_id
 
     def get_optimal_time_slots(
         self,
@@ -24,9 +31,17 @@ class SmartScheduler:
         if not resource or resource.category != "device":
             return []
 
+        preferred_start = to_utc_naive(preferred_start)
         base_time = preferred_start or datetime.utcnow()
         base_time = max(base_time, datetime.utcnow())
         self._preferred_hour = preferred_start.hour if preferred_start else None
+        self._fairness_policy = get_fairness_policy_config()
+        self._fairness_profile = build_user_fairness_profile(
+            self.db,
+            self.requester_user_id,
+            resource_id,
+            datetime.utcnow(),
+        )
         candidates = self._generate_time_slots(base_time, duration_minutes)
         capacity = max(int(resource.total_count or 0), 1)
 
@@ -34,7 +49,15 @@ class SmartScheduler:
         for slot in candidates:
             conflicts = self._check_conflicts(resource_id, slot["start"], slot["end"], capacity)
             slot["conflicts"] = conflicts
-            slot["score"] = self._score_time_slot(resource_id, slot["start"], slot["end"], len(conflicts))
+            score, fairness_penalty, fairness_reasons = self._score_time_slot(
+                resource_id,
+                slot["start"],
+                slot["end"],
+                len(conflicts),
+            )
+            slot["score"] = score
+            slot["fairness_penalty"] = fairness_penalty
+            slot["fairness_reasons"] = fairness_reasons
             scored.append(slot)
 
         scored.sort(key=lambda item: item["score"], reverse=True)
@@ -79,15 +102,19 @@ class SmartScheduler:
         result = []
         overlap_quantity = 0
         for tx in conflicts:
-            if max(start_time, tx.borrow_time) < min(end_time, tx.expected_return_time):
+            tx_start = to_utc_naive(tx.borrow_time)
+            tx_end = to_utc_naive(tx.expected_return_time)
+            if not tx_start or not tx_end:
+                continue
+            if max(start_time, tx_start) < min(end_time, tx_end):
                 overlap_quantity += max(int(tx.quantity or 1), 1)
                 result.append(
                     {
                         "transaction_id": tx.id,
                         "user_id": tx.user_id,
                         "quantity": tx.quantity,
-                        "borrow_time": tx.borrow_time.isoformat() if tx.borrow_time else None,
-                        "expected_return_time": tx.expected_return_time.isoformat() if tx.expected_return_time else None,
+                        "borrow_time": tx_start.isoformat(),
+                        "expected_return_time": tx_end.isoformat(),
                     }
                 )
         return result if overlap_quantity >= capacity else []
@@ -98,7 +125,7 @@ class SmartScheduler:
         start_time: datetime,
         end_time: datetime,
         conflict_count: int,
-    ) -> float:
+    ) -> tuple[float, float, List[str]]:
         score = 100.0
         if conflict_count:
             score -= 80
@@ -108,7 +135,7 @@ class SmartScheduler:
         if 9 <= start_time.hour <= 17:
             score += 8
 
-        # ÓÅÏÈÆ¥Åäpreferred_startµÄÊ±¼ä¶Î
+        # ä¼˜å…ˆåŒ¹é…preferred_startçš„æ—¶é—´æ®µ
         if hasattr(self, '_preferred_hour') and self._preferred_hour is not None:
             hour_diff = abs(start_time.hour - self._preferred_hour)
             if hour_diff <= 2:
@@ -125,7 +152,14 @@ class SmartScheduler:
         elif hours_from_now > 72:
             score -= 5
 
-        return max(0.0, min(100.0, score))
+        fairness_penalty, fairness_reasons = evaluate_fairness_penalty(
+            slot_start=start_time,
+            policy=getattr(self, "_fairness_policy", {}),
+            profile=getattr(self, "_fairness_profile", {}),
+        )
+        score -= fairness_penalty
+
+        return max(0.0, min(100.0, score)), fairness_penalty, fairness_reasons
 
     def _historical_usage(self, resource_id: int, weekday: int, hour: int) -> int:
         four_weeks_ago = datetime.utcnow() - timedelta(days=28)
@@ -224,9 +258,10 @@ class SmartScheduler:
 
         total_hours = 0.0
         for record in usage_records:
-            end_time = record.return_time or record.expected_return_time
-            if record.borrow_time and end_time:
-                total_hours += max((end_time - record.borrow_time).total_seconds() / 3600, 0)
+            end_time = to_utc_naive(record.return_time or record.expected_return_time)
+            start_time = to_utc_naive(record.borrow_time)
+            if start_time and end_time:
+                total_hours += max((end_time - start_time).total_seconds() / 3600, 0)
 
         max_possible_hours = 14 * 30
         return min(1.0, total_hours / max_possible_hours) if max_possible_hours else 0.0
@@ -237,9 +272,10 @@ def get_optimal_time_slots(
     resource_id: int,
     duration_minutes: int,
     preferred_start: Optional[datetime] = None,
+    requester_user_id: Optional[int] = None,
 ) -> List[Dict]:
     """Public wrapper for optimal slot recommendations."""
-    scheduler = SmartScheduler(db)
+    scheduler = SmartScheduler(db, requester_user_id=requester_user_id)
     return scheduler.get_optimal_time_slots(resource_id, duration_minutes, preferred_start)
 
 
@@ -253,5 +289,6 @@ def optimize_resource_allocation(db: Session) -> Dict:
     """Public wrapper for optimization recommendations."""
     scheduler = SmartScheduler(db)
     return scheduler.optimize_resource_allocation()
+
 
 

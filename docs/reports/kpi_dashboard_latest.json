@@ -1,0 +1,126 @@
+{
+  "period": {
+    "days": 30,
+    "current_start": "2026-03-13T11:00:19.711716",
+    "current_end": "2026-04-12T11:00:19.711716",
+    "baseline_start": "2026-02-11T11:00:19.711716",
+    "baseline_end": "2026-03-13T11:00:19.711716"
+  },
+  "metrics": [
+    {
+      "id": "utilization_rate",
+      "name": "设备利用率",
+      "unit": "ratio",
+      "direction": "higher_better",
+      "formula": "borrow_hours / capacity_hours",
+      "description": "借用时长占可用容量时长的比例，反映设备周转与价值释放。",
+      "baseline_value": 0.0,
+      "current_value": 0.0034,
+      "improvement_value": 0.0034,
+      "improvement_percent": 0.0,
+      "trend": "improved",
+      "interpretation": "相较基线已改善"
+    },
+    {
+      "id": "overdue_rate",
+      "name": "逾期率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "overdue_borrows / total_borrows",
+      "description": "借用记录中发生逾期的比例，反映借还纪律和治理效果。",
+      "baseline_value": 0.0,
+      "current_value": 1.0,
+      "improvement_value": -1.0,
+      "improvement_percent": 0.0,
+      "trend": "declined",
+      "interpretation": "相较基线有回退"
+    },
+    {
+      "id": "waste_rate",
+      "name": "浪费率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "high_risk_consume_qty / total_consume_qty",
+      "description": "高风险大批量耗材消耗占比，反映耗材浪费风险。",
+      "baseline_value": 0.0,
+      "current_value": 0.0,
+      "improvement_value": 0.0,
+      "improvement_percent": 0.0,
+      "trend": "stable",
+      "interpretation": "与基线持平"
+    },
+    {
+      "id": "loss_rate",
+      "name": "报失率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "(lost_events + partial_loss_returns) / (borrow_events + lost_events)",
+      "description": "报失与部分丢失事件占比，反映资产丢失控制能力。",
+      "baseline_value": 0.0,
+      "current_value": 0.0,
+      "improvement_value": 0.0,
+      "improvement_percent": 0.0,
+      "trend": "stable",
+      "interpretation": "与基线持平"
+    },
+    {
+      "id": "fairness_index",
+      "name": "公平指数",
+      "unit": "score",
+      "direction": "higher_better",
+      "formula": "1 - gini(user_borrow_hours)",
+      "description": "用户借用时长分布公平性，越接近 1 越均衡。",
+      "baseline_value": 1.0,
+      "current_value": 1.0,
+      "improvement_value": 0.0,
+      "improvement_percent": 0.0,
+      "trend": "stable",
+      "interpretation": "与基线持平"
+    }
+  ],
+  "dictionary": [
+    {
+      "id": "utilization_rate",
+      "name": "设备利用率",
+      "unit": "ratio",
+      "direction": "higher_better",
+      "formula": "borrow_hours / capacity_hours",
+      "description": "借用时长占可用容量时长的比例，反映设备周转与价值释放。"
+    },
+    {
+      "id": "overdue_rate",
+      "name": "逾期率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "overdue_borrows / total_borrows",
+      "description": "借用记录中发生逾期的比例，反映借还纪律和治理效果。"
+    },
+    {
+      "id": "waste_rate",
+      "name": "浪费率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "high_risk_consume_qty / total_consume_qty",
+      "description": "高风险大批量耗材消耗占比，反映耗材浪费风险。"
+    },
+    {
+      "id": "loss_rate",
+      "name": "报失率",
+      "unit": "ratio",
+      "direction": "lower_better",
+      "formula": "(lost_events + partial_loss_returns) / (borrow_events + lost_events)",
+      "description": "报失与部分丢失事件占比，反映资产丢失控制能力。"
+    },
+    {
+      "id": "fairness_index",
+      "name": "公平指数",
+      "unit": "score",
+      "direction": "higher_better",
+      "formula": "1 - gini(user_borrow_hours)",
+      "description": "用户借用时长分布公平性，越接近 1 越均衡。"
+    }
+  ],
+  "generated_at": "2026-04-12T11:00:19.718059",
+  "exported_by": "teacher1",
+  "exported_at": "2026-04-12T11:00:19.720099Z"
+}

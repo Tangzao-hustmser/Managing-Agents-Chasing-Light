@@ -1,0 +1,150 @@
+{
+  "generated_at": "2026-04-12T11:00:35.043601Z",
+  "all_ok": true,
+  "passed_checks": 7,
+  "total_checks": 7,
+  "checks": [
+    {
+      "name": "agent_eval_regression",
+      "ok": true,
+      "detail": "agent_eval score=100.00",
+      "data": {
+        "total_cases": 7,
+        "passed_cases": 7,
+        "failed_cases": 0,
+        "score": 100.0,
+        "category_scores": {
+          "clarification": {
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "score": 100.0
+          },
+          "exception": {
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "score": 100.0
+          },
+          "execution": {
+            "total": 2,
+            "passed": 2,
+            "failed": 0,
+            "score": 100.0
+          },
+          "qa": {
+            "total": 2,
+            "passed": 2,
+            "failed": 0,
+            "score": 100.0
+          },
+          "refusal": {
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "score": 100.0
+          }
+        }
+      }
+    },
+    {
+      "name": "readiness_endpoint",
+      "ok": true,
+      "detail": "HTTP 200",
+      "data": {
+        "service": "创新实践基地共享设备和物料管理智能体",
+        "environment": "dev",
+        "readiness_score": 80,
+        "readiness_level": "attention",
+        "checks": [
+          {
+            "name": "database",
+            "ok": true,
+            "detail": "Database connectivity"
+          },
+          {
+            "name": "seed_data",
+            "ok": true,
+            "detail": "Users/resources initialized for demo"
+          },
+          {
+            "name": "jwt_secret",
+            "ok": false,
+            "detail": "JWT secret is not default"
+          },
+          {
+            "name": "llm_config",
+            "ok": true,
+            "detail": "LLM configuration completeness"
+          }
+        ],
+        "stats": {
+          "users": 3,
+          "resources": 2,
+          "transactions": 0,
+          "open_follow_up_tasks": 0
+        },
+        "llm": {
+          "ok": true,
+          "reason": "config_present",
+          "message": "LLM config detected"
+        },
+        "recommendations": [
+          "设置强随机 JWT_SECRET 后再进行公开演示"
+        ]
+      }
+    },
+    {
+      "name": "agent_action_proposal",
+      "ok": true,
+      "detail": "HTTP 200",
+      "data": {
+        "confirmation_required": true,
+        "pending_action_name": "submit_borrow_application",
+        "analysis_steps_len": 3
+      }
+    },
+    {
+      "name": "agent_action_execution",
+      "ok": true,
+      "detail": "HTTP 200",
+      "data": {
+        "executed_tools": [
+          {
+            "name": "submit_borrow_application",
+            "status": "executed",
+            "summary": "已提交 borrow 申请，单号 #1，等待审批。"
+          }
+        ]
+      }
+    },
+    {
+      "name": "enhanced_multi_agent_trace",
+      "ok": true,
+      "detail": "HTTP 200",
+      "data": {
+        "trace_len": 3,
+        "orchestration_summary": "多代理协作完成：调度代理评估容量与排程，治理代理评估风险与公平，证据代理评估可追溯性。当前优先建议：将高风险异常优先转闭环动作，并持续追踪公平指数变化。"
+      }
+    },
+    {
+      "name": "kpi_dashboard",
+      "ok": true,
+      "detail": "HTTP 200",
+      "data": {
+        "metrics_count": 5
+      }
+    },
+    {
+      "name": "competition_requirements_4x",
+      "ok": true,
+      "detail": "Match against 4 mandatory competition requirements",
+      "data": {
+        "r1_goal_oriented": true,
+        "r2_perceive_reason_act": true,
+        "r3_multi_agent_or_multi_modal": true,
+        "r4_innovation_practical_feasible": true
+      }
+    }
+  ]
+}

@@ -10,6 +10,7 @@
 - 实例级借出与归还
 - 损坏归还和部分丢失归还
 - 追责/补录/维护任务生成
+- 闭环任务查询与状态流转
 - Agent 会话 owner 绑定
 - Agent 确认后执行业务工具
 - 调度、增强分析、七牛证据流接口
@@ -77,6 +78,17 @@
 - 增强分析仅管理员可访问
 - 增强需求预测返回新 schema
 
+### 3.4 `tests/test_follow_up_tasks.py`
+
+验证闭环任务中心与智能体任务执行链路。
+
+当前覆盖：
+
+- 学生可查看并处理自己被指派的闭环任务
+- 学生不能更新未分配给自己的闭环任务
+- 教师可查看全局闭环任务状态
+- Agent 可通过“确认执行”更新闭环任务状态
+
 ## 4. 当前通过情况
 
 本地最近一次运行结果：
@@ -85,13 +97,13 @@
 pytest -q
 ```
 
-结果：
+本仓库一次回归结果（2026-04-01）：
 
 ```text
-24 passed
+38 passed
 ```
 
-如果你想在答辩前再确认一次，直接重新执行同一命令即可。
+建议提交前在你的环境再跑一遍全量用例确认。
 
 ## 5. 如何运行测试
 
@@ -107,6 +119,7 @@ pytest -q
 pytest tests/test_workflows.py -q
 pytest tests/test_agent_enhanced.py -q
 pytest tests/test_pages.py -q
+pytest tests/test_follow_up_tasks.py -q
 ```
 
 ### 5.3 运行单个测试用例

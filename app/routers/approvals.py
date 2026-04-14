@@ -1,6 +1,8 @@
 """Approval routes."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,14 @@ from app.routers.auth import get_current_user
 from app.schemas import ApprovalTaskApprove, ApprovalTaskOut
 from app.services.approval_service import approve_task, get_approval_by_id, get_pending_approvals, reject_task
 from app.services.auth_service import is_teacher_or_admin
+from app.services.concurrency_service import acquire_entity_lock
+from app.services.audit_service import write_audit_log
+from app.services.idempotency_service import (
+    IdempotencyConflictError,
+    persist_idempotent_response,
+    prepare_idempotency,
+)
+from app.services.rate_limit_service import RateLimitExceededError, enforce_write_rate_limit
 from app.services.transaction_service import build_approval_out
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -101,6 +111,8 @@ def get_approval(
 def approve(
     approval_id: int,
     payload: ApprovalTaskApprove,
+    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    request: Request = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -108,18 +120,68 @@ def approve(
     if not is_teacher_or_admin(current_user):
         raise HTTPException(status_code=403, detail="Only teachers or admins can review approvals")
 
-    task = get_approval_by_id(db, approval_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Approval task not found")
-
     try:
-        if payload.approved:
-            task = approve_task(db, task, current_user, payload.reason)
-        else:
-            task = reject_task(db, task, current_user, payload.reason)
-        db.commit()
-        task = get_approval_by_id(db, approval_id)
-        return build_approval_out(task, current_user)
+        enforce_write_rate_limit(user_id=current_user.id, endpoint_key="approvals.review")
+        with acquire_entity_lock(f"approval:{approval_id}"):
+            idempotency = prepare_idempotency(
+                db,
+                scope="approvals.review",
+                user_id=current_user.id,
+                idempotency_key=idempotency_key,
+                request_payload={
+                    "approval_id": approval_id,
+                    "approved": payload.approved,
+                    "reason": payload.reason,
+                },
+                entity_key=f"approval:{approval_id}",
+            )
+            if idempotency.cached_response is not None:
+                return idempotency.cached_response
+
+            task = get_approval_by_id(db, approval_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Approval task not found")
+
+            if payload.approved:
+                task = approve_task(db, task, current_user, payload.reason)
+                action = "approval.approve"
+            else:
+                task = reject_task(db, task, current_user, payload.reason)
+                action = "approval.reject"
+
+            task = get_approval_by_id(db, approval_id)
+            response_payload = build_approval_out(task, current_user)
+            write_audit_log(
+                db,
+                actor=current_user,
+                action=action,
+                entity_type="approval_task",
+                entity_id=task.id if task else approval_id,
+                detail={
+                    "approved": bool(payload.approved),
+                    "reason": payload.reason,
+                    "status": task.status if task else "",
+                    "transaction_id": task.transaction_id if task else None,
+                },
+                request=request,
+                idempotency_key=idempotency_key or "",
+            )
+            persist_idempotent_response(db, context=idempotency, response_payload=response_payload, status_code=200)
+            db.commit()
+            return response_payload
+    except HTTPException:
+        db.rollback()
+        raise
+    except IdempotencyConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RateLimitExceededError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
