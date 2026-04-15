@@ -152,15 +152,33 @@ py -m scripts.finals.run_finals_pipeline --output-dir docs/reports --kpi-days 30
 
 ## 7. 文档入口
 
+- 文档总导航：[docs/README.md](docs/README.md)
 - 使用说明：[docs/USAGE.md](docs/USAGE.md)
 - 测试文档：[docs/TESTING.md](docs/TESTING.md)
-- 头脑风暴与优化路径：[docs/BRAINSTORM_OPTIMIZATION_2026-03-31.md](docs/BRAINSTORM_OPTIMIZATION_2026-03-31.md)
+- 项目结构说明：[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
+- 历史材料归档索引：[docs/archive/README.md](docs/archive/README.md)
+- 头脑风暴与优化路径：[docs/plans/archive/BRAINSTORM_OPTIMIZATION_2026-03-31.md](docs/plans/archive/BRAINSTORM_OPTIMIZATION_2026-03-31.md)
 - 决赛答辩资产包：
+  - [docs/finals/README.md](docs/finals/README.md)
   - [docs/finals/2026-04-12-defense-evidence-chain.md](docs/finals/2026-04-12-defense-evidence-chain.md)
   - [docs/finals/2026-04-12-defense-ppt-outline.md](docs/finals/2026-04-12-defense-ppt-outline.md)
   - [docs/finals/2026-04-12-defense-ppt.md](docs/finals/2026-04-12-defense-ppt.md)
   - [docs/finals/2026-04-12-defense-demo-script.md](docs/finals/2026-04-12-defense-demo-script.md)
   - [docs/finals/2026-04-12-competition-requirements-checklist.md](docs/finals/2026-04-12-competition-requirements-checklist.md)
+
+### 7.1 工作区清理（保持目录简洁）
+
+清理缓存、测试产物、临时文件（不删主数据库）：
+
+```powershell
+pwsh ./scripts/maintenance/cleanup_workspace.ps1
+```
+
+如需连数据库一起重置（会删除 `smart_lab.db`）：
+
+```powershell
+pwsh ./scripts/maintenance/cleanup_workspace.ps1 -IncludeDatabases
+```
 
 ## 8. 本轮优化（2026-03-31）
 

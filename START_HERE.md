@@ -63,3 +63,13 @@ python -m app.seed_scenarios
 ```bash
 py -m pytest -q
 ```
+
+清理缓存与临时产物（推荐每次演示前执行）：
+
+```powershell
+pwsh ./scripts/maintenance/cleanup_workspace.ps1
+```
+
+项目结构说明：`docs/PROJECT_STRUCTURE.md`
+
+文档总导航：`docs/README.md`
