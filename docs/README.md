@@ -26,6 +26,10 @@
 
 - 索引：  
   [finals/README.md](finals/README.md)
+- 展示主文档（推荐优先）：  
+  [finals/2026-04-15-project-showcase.md](finals/2026-04-15-project-showcase.md)
+- 6 分钟讲解稿（逐页台词版）：  
+  [finals/2026-04-15-6min-page-script.md](finals/2026-04-15-6min-page-script.md)
 
 ## 4. 自动生成报告
 
